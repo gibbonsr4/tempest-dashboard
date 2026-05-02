@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // The `name` here must match the Worker name in the Cloudflare
+  // dashboard. If you create the Worker with a different name, edit
+  // this field to match (or rename the Worker in Cloudflare).
+  "name": "tempest",
+  "compatibility_date": "2025-04-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "main": ".open-next/worker.js",
+  // `keep_names: false` works around an OpenNext + Workers issue
+  // where minification renames a `__name` helper that the Cloudflare
+  // runtime then can't resolve. Documented OpenNext fix:
+  // https://opennext.js.org/cloudflare/howtos/keep_names
+  "keep_names": false,
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  },
+  // Add a custom domain via the Cloudflare dashboard
+  // (Worker → Settings → Domains → Add Custom Domain), or uncomment
+  // the block below and fill in your hostname before deploying:
+  //
+  // "routes": [
+  //   { "pattern": "your-domain.example.com", "custom_domain": true }
+  // ],
+  "observability": {
+    "enabled": true
+  }
+}

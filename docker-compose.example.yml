@@ -1,0 +1,41 @@
+# Example Docker Compose config for the Tempest dashboard.
+#
+# Setup:
+#   1. cp docker-compose.example.yml docker-compose.yml
+#   2. Edit the values under `environment` (or use a separate .env file).
+#   3. docker compose up -d
+#
+# The dashboard listens on port 3000 inside the container; we expose
+# it as 3000 on the host. Reverse-proxy from your existing httpd
+# (Nginx, Caddy, Apache) for HTTPS — or visit
+# http://<host>:3000 directly on a LAN.
+
+services:
+  tempest:
+    build: .
+    container_name: tempest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # ── Required ──
+      # WeatherFlow Tempest personal access token.
+      # Generate at https://tempestwx.com/settings/tokens
+      TEMPEST_TOKEN: "your-tempest-personal-access-token"
+
+      # Numeric station id from your tempestwx.com URL.
+      TEMPEST_STATION_ID: "your-numeric-station-id"
+
+      # AirNow API key for the AQI tile.
+      # Free, instant request: https://docs.airnowapi.org/account/request
+      AIRNOW_API_KEY: "your-airnow-key"
+
+      # User-Agent string NWS requires for production deploys.
+      # Format: "<app-name> (<contact-email>)"
+      NWS_USER_AGENT: "tempest-dashboard (your-email@example.com)"
+
+      # ── Optional ──
+      # First-paint theme. Valid values: light, dark (default), system.
+      # `system` follows the OS's prefers-color-scheme; user can
+      # always override via the toggle in the top nav.
+      # NEXT_PUBLIC_DEFAULT_THEME: "dark"

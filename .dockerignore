@@ -1,0 +1,47 @@
+# Build artifacts (re-built fresh inside the image, never copied in)
+.next
+.open-next
+.wrangler
+node_modules
+
+# Local config — never bake into the image
+.env
+.env.*
+!.env.example
+
+# VCS + dev tooling
+.git
+.gitignore
+.github
+.vscode
+.idea
+.claude
+
+# Local-only docs / scratchpads (ignored if present)
+notes
+.code-review
+docs
+
+# Probe + dev scripts (not needed at runtime)
+scripts/probe-output
+scripts/archive
+
+# Local data exports
+data
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# TypeScript build cache (not needed in the image)
+*.tsbuildinfo
+next-env.d.ts
+
+# Lockfile-only sources (Dockerfile already pins via package.json)
+README.md
+LICENSE
+SECURITY.md
+docker-compose.yml
+docker-compose.example.yml
+Dockerfile
+.dockerignore

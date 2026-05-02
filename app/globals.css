@@ -1,0 +1,317 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Light theme. Copper primary on warm-neutral surfaces. The dashboard is
+ * dark-first, but a tasteful light mode is supported via the toggle.
+ */
+:root {
+  --background: oklch(0.99 0.005 80);
+  --foreground: oklch(0.20 0.015 250);
+  --card: oklch(0.98 0.008 80);
+  --card-foreground: oklch(0.20 0.015 250);
+  --popover: oklch(0.99 0.005 80);
+  --popover-foreground: oklch(0.20 0.015 250);
+  --primary: oklch(0.58 0.13 50);
+  --primary-foreground: oklch(0.99 0.005 80);
+  --secondary: oklch(0.95 0.01 80);
+  --secondary-foreground: oklch(0.25 0.015 250);
+  --muted: oklch(0.95 0.008 80);
+  --muted-foreground: oklch(0.50 0.015 250);
+  --accent: oklch(0.93 0.03 60);
+  --accent-foreground: oklch(0.30 0.08 50);
+  --destructive: oklch(0.58 0.20 28);
+  --border: oklch(0.90 0.01 80);
+  --input: oklch(0.92 0.01 80);
+  --ring: oklch(0.58 0.13 50);
+  --chart-1: oklch(0.60 0.18 45);   /* temp warm */
+  --chart-2: oklch(0.55 0.13 220);  /* humidity / dew */
+  --chart-3: oklch(0.45 0.04 250);  /* wind slate */
+  --chart-4: oklch(0.55 0.16 245);  /* precip blue */
+  --chart-5: oklch(0.62 0.15 80);   /* solar / uv amber */
+  --radius: 0.6rem;
+
+  /* ──────────────────────────────────────────────────────────────────
+   * SVG palette — defined once in :root so it cascades to BOTH light
+   * and dark themes. The HorizonBand depicts the literal sky, so its
+   * sky/sun/moon colors stay constant regardless of UI mode. The
+   * `--on-sky-*` group covers in-band hairlines and tick text — those
+   * always sit on a (largely dark) sky gradient, so they're tuned
+   * "white on dark" in both modes.
+   * ────────────────────────────────────────────────────────────────── */
+
+  /* HorizonBand ambient sky — single color reflecting CURRENT
+     conditions (not a gradient through time). Three phases, each
+     with theme-appropriate variants below.
+     Phase is picked in JS from current sun altitude:
+       day        — sun > +6° (well above horizon)
+       twilight   — sun -12° to +6° (golden hour through dusk)
+       night      — sun < -12° (deep night) */
+
+  /* Horizon sky: four phases tracked by sun altitude — day (alt
+     above ~+6°), civil twilight (between ±6°, the warm golden-hour
+     glow when the sun is near the horizon), nautical twilight
+     (between -6° and -12°, cool violet/indigo as the sun drops
+     further below), and night (sun below -12°). Tuned for realism:
+     saturated sky-blue daytime, peachy-gold civil, deep violet
+     nautical, dark navy night — same hue family / saturation across
+     light and dark modes; only the lightness pivots. */
+  --horizon-sky-day: oklch(0.78 0.10 222);
+  --horizon-sky-civil: oklch(0.74 0.12 55);
+  --horizon-sky-nautical: oklch(0.55 0.10 282);
+  --horizon-sky-night: oklch(0.42 0.08 255);
+  --horizon-ground: oklch(0.78 0.025 245);
+  --horizon-horizon-line: oklch(0 0 0 / 18%);
+
+  /* In-band hairlines + tick text — picked so they read against
+     ANY ambient background. Light themes get dark-on-light; dark
+     themes flip these in `.dark` below. */
+  --on-sky-hairline-soft: oklch(0 0 0 / 14%);
+  --on-sky-hairline-mid: oklch(0 0 0 / 22%);
+  --on-sky-hairline-strong: oklch(0 0 0 / 32%);
+  --on-sky-text-muted: oklch(0.30 0.02 250);
+
+  /* Sun + moon glyphs — saturated colors that work across themes.
+     Above/below-horizon dim state is now applied via SVG `opacity`
+     in HorizonBand, so no separate `--*-dim` tokens are needed. */
+  --sun-bright: oklch(0.78 0.18 70);
+  --sun-bright-stroke: oklch(0.62 0.16 60);
+  --sun-arc: oklch(0.65 0.16 50 / 0.8);
+  --sun-arc-below: oklch(0.55 0.10 50 / 0.4);
+  --moon-bright: oklch(0.92 0.03 90);
+  --moon-dark: oklch(0.42 0.04 250);
+  --moon-dark-subtitle: oklch(0.45 0.04 250);
+  --moon-arc: oklch(0.45 0.05 250 / 0.55);
+  --moon-arc-below: oklch(0.55 0.04 250 / 0.35);
+  --sunrise-marker: oklch(0.62 0.15 60);
+  --sunset-marker: oklch(0.55 0.18 35);
+
+  /* ──────────────────────────────────────────────────────────────────
+   * Theme-aware tokens — light defaults below, dark overrides in
+   * `.dark` further down.
+   * ────────────────────────────────────────────────────────────────── */
+
+  /* Page-level hairlines (axis baselines, tick marks on themed cards) */
+  --hairline-soft: oklch(0 0 0 / 10%);
+  --hairline-mid: oklch(0 0 0 / 15%);
+  --hairline-strong: oklch(0 0 0 / 22%);
+
+  /* Status palette */
+  --status-good: oklch(0.55 0.13 145);
+  --status-warn-soft: oklch(0.62 0.13 95);
+  --status-warn: oklch(0.62 0.14 80);
+  --status-alert: oklch(0.58 0.18 50);
+  --status-strong: oklch(0.50 0.20 30);
+  --status-extreme: oklch(0.45 0.22 320);
+  --status-info: oklch(0.55 0.13 220);
+  --status-muted: oklch(0.50 0.04 250);
+  --status-rising: oklch(0.55 0.13 145);
+  --status-falling: oklch(0.62 0.14 60);
+  --status-steady: oklch(0.50 0.04 250);
+  --status-diffuse: oklch(0.55 0.10 200);
+  --status-low-light: oklch(0.50 0.06 230);
+
+  /* Wind speed bands (Beaufort-derived) */
+  --wind-calm: oklch(0.55 0.04 250 / 0.55);
+  --wind-light: oklch(0.55 0.10 220);
+  --wind-moderate: oklch(0.55 0.13 145);
+  --wind-fresh: oklch(0.62 0.13 80);
+  --wind-strong: oklch(0.55 0.20 35);
+
+  /* Temperature gradient (38°F cold → 110°F extreme) */
+  --temp-cold: oklch(0.55 0.16 245);
+  --temp-cool: oklch(0.55 0.13 220);
+  --temp-mild: oklch(0.55 0.13 145);
+  --temp-warm: oklch(0.62 0.15 75);
+  --temp-hot: oklch(0.62 0.18 50);
+  --temp-extreme: oklch(0.55 0.23 25);
+  --temp-line-fill: oklch(0.62 0.18 45 / 0.18);
+
+  /* Semantic icon-color tokens. Used by HeroForecastStrip and
+     PersonalRecords in place of raw Tailwind colors so a future
+     palette tweak only touches this file. */
+  --icon-sun: oklch(0.62 0.16 80);
+  --icon-rain: oklch(0.55 0.16 245);
+  --icon-snow: oklch(0.62 0.10 220);
+  --icon-flame: oklch(0.62 0.18 45);
+  --icon-cold: oklch(0.55 0.13 230);
+  --icon-pressure: oklch(0.55 0.16 290);
+  /* Lightning gets its own amber token (rather than reusing
+     `--primary` copper) because the copper at light-theme card bg
+     fails WCAG AA non-text contrast (~2.4:1). This darker, more
+     saturated amber clears the 3.0:1 threshold against the warm
+     near-white card. Dark-mode variant lives in `.dark` below. */
+  --icon-lightning: oklch(0.65 0.18 80);
+}
+
+/*
+ * Dark theme — the default. Cool slate surfaces with copper accent.
+ * Background hue is hinted blue (250°) so warm copper reads with contrast.
+ */
+.dark {
+  --background: oklch(0.18 0.018 250);
+  --foreground: oklch(0.96 0.005 80);
+  --card: oklch(0.22 0.022 250);
+  --card-foreground: oklch(0.96 0.005 80);
+  --popover: oklch(0.22 0.022 250);
+  --popover-foreground: oklch(0.96 0.005 80);
+  --primary: oklch(0.72 0.12 55);
+  --primary-foreground: oklch(0.18 0.018 250);
+  --secondary: oklch(0.27 0.022 250);
+  --secondary-foreground: oklch(0.96 0.005 80);
+  --muted: oklch(0.27 0.022 250);
+  --muted-foreground: oklch(0.70 0.012 250);
+  --accent: oklch(0.32 0.05 55);
+  --accent-foreground: oklch(0.92 0.05 70);
+  --destructive: oklch(0.66 0.20 25);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.72 0.12 55);
+  --chart-1: oklch(0.74 0.16 45);
+  --chart-2: oklch(0.74 0.13 220);
+  --chart-3: oklch(0.68 0.04 250);
+  --chart-4: oklch(0.65 0.16 240);
+  --chart-5: oklch(0.78 0.13 85);
+
+  /* Page-level hairlines flip white-on-dark in dark mode. */
+  --hairline-soft: oklch(1 0 0 / 12%);
+  --hairline-mid: oklch(1 0 0 / 18%);
+  --hairline-strong: oklch(1 0 0 / 28%);
+
+  /* Horizon ambient sky — dark-theme variants. Same hue family +
+     saturation as light mode (see :root), with lightness pivoted
+     down for the dark UI: vibrant sky blue for day, deeper golden
+     civil, indigo nautical, near-black navy night. Ground sits
+     clearly above the page bg (`0.18`) so the band stops bleeding. */
+  --horizon-sky-day: oklch(0.63 0.10 222);
+  --horizon-sky-civil: oklch(0.56 0.11 60);
+  --horizon-sky-nautical: oklch(0.36 0.10 282);
+  --horizon-sky-night: oklch(0.24 0.06 255);
+  --horizon-ground: oklch(0.32 0.025 245);
+  --horizon-horizon-line: oklch(1 0 0 / 18%);
+
+  /* In-band hairlines + tick text flip light-on-dark. */
+  --on-sky-hairline-soft: oklch(1 0 0 / 14%);
+  --on-sky-hairline-mid: oklch(1 0 0 / 22%);
+  --on-sky-hairline-strong: oklch(1 0 0 / 32%);
+  --on-sky-text-muted: oklch(0.78 0.012 250);
+
+  /* Sun glyph stroke — brighter in dark mode. */
+  --sun-bright-stroke: oklch(0.95 0.04 80);
+  /* Moon dark side stays slate but a touch lighter than the night sky
+     so the disc reads. */
+  --moon-dark: oklch(0.40 0.02 250);
+  --moon-dark-subtitle: oklch(0.36 0.02 250);
+  --moon-arc: oklch(0.85 0.02 240 / 0.55);
+  --moon-arc-below: oklch(0.55 0.02 240 / 0.45);
+  --sun-arc: oklch(0.85 0.14 70 / 0.7);
+  --sun-arc-below: oklch(0.45 0.10 60 / 0.4);
+
+  /* Status palette — brighter variants for dark surfaces. */
+  --status-good: oklch(0.74 0.13 145);
+  --status-warn-soft: oklch(0.74 0.13 100);
+  --status-warn: oklch(0.78 0.13 85);
+  --status-alert: oklch(0.72 0.18 50);
+  --status-strong: oklch(0.62 0.20 30);
+  --status-extreme: oklch(0.55 0.22 320);
+  --status-info: oklch(0.74 0.13 220);
+  --status-muted: oklch(0.55 0.04 250);
+  --status-rising: oklch(0.74 0.13 145);
+  --status-falling: oklch(0.78 0.13 50);
+  --status-steady: oklch(0.68 0.04 250);
+  --status-diffuse: oklch(0.74 0.10 200);
+  --status-low-light: oklch(0.65 0.06 230);
+
+  /* Wind bands — brighter variants. */
+  --wind-calm: oklch(0.45 0.04 250 / 0.65);
+  --wind-light: oklch(0.62 0.10 220);
+  --wind-moderate: oklch(0.70 0.13 145);
+  --wind-fresh: oklch(0.75 0.13 85);
+  --wind-strong: oklch(0.66 0.20 35);
+
+  /* Temperature gradient — brighter variants. */
+  --temp-cold: oklch(0.65 0.16 245);
+  --temp-cool: oklch(0.74 0.13 220);
+  --temp-mild: oklch(0.74 0.13 145);
+  --temp-warm: oklch(0.82 0.15 80);
+  --temp-hot: oklch(0.74 0.18 50);
+  --temp-extreme: oklch(0.62 0.23 25);
+  --temp-line-fill: oklch(0.74 0.16 45 / 0.35);
+
+  /* Semantic icon-color tokens — brighter for dark surfaces. */
+  --icon-sun: oklch(0.82 0.15 85);
+  --icon-rain: oklch(0.74 0.16 245);
+  --icon-snow: oklch(0.78 0.10 220);
+  --icon-flame: oklch(0.74 0.18 50);
+  --icon-cold: oklch(0.74 0.13 230);
+  --icon-pressure: oklch(0.74 0.16 290);
+  /* Lightning amber — brighter in dark mode for visibility against
+     the dark card surface; same hue family as light mode so the
+     theme switch reads as the same "lightning amber" identity. */
+  --icon-lightning: oklch(0.82 0.16 85);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "cv11";
+  }
+  html {
+    /* `bg-background` here (not just on body) so iOS Safari has a
+       theme-correct color to sample for the safe area behind the
+       dynamic island / status bar. Without it Safari falls back to
+       white during paint cycles where it's looking at the html
+       element rather than body, producing the "wrong-theme stripe at
+       top" behavior on iOS. The dynamic <meta name="theme-color">
+       updater (components/theme/ThemeColorMeta.tsx) covers the
+       browser-chrome tint; this covers the safe-area fill. */
+    @apply bg-background font-sans antialiased;
+  }
+  /* Numeric readouts (temp, mph, etc.) get tabular alignment so they don't
+     jitter when values change. Apply via the .tabular utility. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

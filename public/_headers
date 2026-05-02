@@ -1,0 +1,13 @@
+# Cloudflare Workers / Pages cache headers for static assets.
+#
+# OpenNext-Cloudflare deploys serve `_next/static/*` assets that are
+# content-hashed and immutable, so aggressive caching is safe and
+# meaningfully cuts the cold-start path.
+#
+# Vercel ignores this file (Vercel applies its own headers via Next's
+# build manifest); on Docker self-host the runtime serves Next's
+# default headers, which are also fine. So this file is effectively
+# Cloudflare-specific.
+
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
