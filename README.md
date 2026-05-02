@@ -47,7 +47,7 @@ no CLI** — both are GitHub-connected, zero-terminal flows.
 
 ### 🚀 Vercel (easiest, ~5 min)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fgibbonsr4%2Ftempest-dashboard&env=TEMPEST_TOKEN,TEMPEST_STATION_ID,AIRNOW_API_KEY,NWS_USER_AGENT&envDescription=See%20README%20for%20setup%20instructions&envLink=https%3A%2F%2Fgithub.com%2Fgibbonsr4%2Ftempest-dashboard%23where-to-get-the-env-vars)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fgibbonsr4%2Ftempest-dashboard&env=TEMPEST_TOKEN,TEMPEST_STATION_ID,AIRNOW_API_KEY,NWS_USER_AGENT,NEXT_PUBLIC_DEFAULT_THEME&envDescription=The%20first%20four%20vars%20are%20required.%20NEXT_PUBLIC_DEFAULT_THEME%20is%20optional%20%28light%20%2F%20dark%20%2F%20system%2C%20defaults%20to%20dark%29.&envLink=https%3A%2F%2Fgithub.com%2Fgibbonsr4%2Ftempest-dashboard%23where-to-get-the-env-vars)
 
 1. Click the button → Vercel forks the repo to your GitHub.
 2. Vercel prompts for the four environment variables; paste them in.
