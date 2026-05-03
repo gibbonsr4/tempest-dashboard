@@ -105,9 +105,65 @@ export function buildArcSegments(
   const toPath = (chunks: string[][]) =>
     chunks
       .filter((c) => c.length > 1)
-      .map((c) => `M ${c.join(" L ")}`)
+      .map(chunkToSmoothPath)
       .join(" ");
   return { above: toPath(above), below: toPath(below) };
+}
+
+/**
+ * Convert a chunk of "x,y" sample points into a smooth cubic-Bezier
+ * path, using Catmull-Rom interpolation. The curve passes exactly
+ * through every sample point (so peak altitudes stay correct), but
+ * the segments BETWEEN samples are smooth instead of straight —
+ * which visually matters at the arc's apex, where adjacent line
+ * segments would otherwise meet at a sharp angle and read as a
+ * spike rather than a curve. With 96 samples/day there's enough
+ * density for a clean smoothing at any zoom; the helper bails to
+ * a plain `M…L…` for 2-point chunks (e.g., the tiny segment between
+ * a horizon-crossing interpolation point and the adjacent sample).
+ *
+ * Tension parameter is the standard 1/6 = uniform Catmull-Rom.
+ * Centripetal variant would avoid overshoot at sharp curvature
+ * inflections, but the sun/moon paths are physically smooth, so
+ * uniform behaves well here.
+ */
+function chunkToSmoothPath(chunk: string[]): string {
+  if (chunk.length < 2) return "";
+  if (chunk.length === 2) return `M ${chunk[0]} L ${chunk[1]}`;
+
+  const points = chunk.map((p) => {
+    const [x, y] = p.split(",").map(Number);
+    return [x, y] as [number, number];
+  });
+  const n = points.length;
+  let path = `M ${chunk[0]}`;
+  for (let i = 0; i < n - 1; i++) {
+    // For the first/last segments, duplicate the endpoint onto its
+    // own out-of-chunk slot (`p0 = p1` at the start, `p3 = p2` at the
+    // end). This collapses the imaginary surrounding-control point
+    // onto the actual endpoint, giving a zero-length tangent
+    // extension there — which keeps curvature finite and prevents
+    // wild overshoot at chunk ends without inventing fake geometry.
+    //
+    // Codex review note: this DOES make the tangent at horizon-
+    // crossing endpoints uniform-spacing-naive (the interpolated
+    // crossing point can be much closer in time to its neighbour
+    // than other samples are to each other). In practice the
+    // sun/moon arcs are smooth enough that no visible overshoot
+    // appears. If one ever does, linearize the segment touching the
+    // crossing (replace `C` with `L` for `i === 0` or `i === n-2`
+    // when the chunk's first/last point sits at horizonY).
+    const p0 = points[i === 0 ? i : i - 1];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2 < n ? i + 2 : i + 1];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    path += ` C ${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return path;
 }
 
 /**
