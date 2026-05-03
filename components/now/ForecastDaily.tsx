@@ -15,11 +15,14 @@ import { WeatherIcon } from "./WeatherIcon";
  * typically returns 10 days; we render whatever's there.
  *
  * Scrollbar is hidden on both engine families (`-webkit-` for Safari /
- * Chrome, `scrollbar-width: none` for Firefox). Cells are
- * `shrink-0` with a fixed `w-20` so the rhythm reads consistently
- * across viewport widths — on mobile the row scrolls smoothly
- * under a finger; on desktop, when all cells fit, no scroll is
- * needed.
+ * Chrome, `scrollbar-width: none` for Firefox). Cell sizing is
+ * `flex-1 min-w-20`: each cell holds an 80px floor, but when the
+ * combined width of the row would otherwise leave dead space at
+ * the right edge of the card (typical desktop case with ~9 days
+ * × 80px ≈ 720px in a 1100px-wide card) the cells grow uniformly
+ * to fill it. On narrow viewports where the row would overflow,
+ * `min-w-20` keeps each cell at its readable floor and the row
+ * scrolls horizontally.
  */
 export function ForecastDaily({ days }: { days: ForecastDay[] }) {
   const tz = useStationTz();
@@ -42,7 +45,7 @@ export function ForecastDaily({ days }: { days: ForecastDay[] }) {
             return (
               <div
                 key={`${d.day_start_local}-${i}`}
-                className="flex w-20 shrink-0 flex-col items-center gap-1.5 rounded-lg border border-border/50 bg-card/40 px-2 py-3"
+                className="flex min-w-20 flex-1 flex-col items-center gap-1.5 rounded-lg border border-border/50 bg-card/40 px-2 py-3"
               >
                 <div className="text-xs text-muted-foreground">
                   {dateMs ? formatWeekday(dateMs, tz) : "—"}
