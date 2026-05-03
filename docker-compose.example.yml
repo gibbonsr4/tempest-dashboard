@@ -35,7 +35,7 @@ services:
       NWS_USER_AGENT: "tempest-dashboard (your-email@example.com)"
 
       # ── Optional ──
-      # First-paint theme. Valid values: light, dark (default), system.
+      # First-paint theme. Valid values: system (default), dark, light.
       # `system` follows the OS's prefers-color-scheme; user can
       # always override via the toggle in the top nav.
-      # NEXT_PUBLIC_DEFAULT_THEME: "dark"
+      # NEXT_PUBLIC_DEFAULT_THEME: "system"

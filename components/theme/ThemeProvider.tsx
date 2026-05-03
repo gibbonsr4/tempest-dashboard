@@ -30,8 +30,13 @@ function readDefaultTheme(): DefaultTheme {
   // browser; other prefixes would not be visible here.
   const raw = process.env.NEXT_PUBLIC_DEFAULT_THEME?.toLowerCase().trim();
   if (raw === "light" || raw === "dark" || raw === "system") return raw;
-  // Unrecognized / unset → dark (the dashboard's design default).
-  return "dark";
+  // Unrecognized / unset → system (follow OS preference). The
+  // dashboard is designed dark-first, but defaulting to system
+  // means a user in light mode on their OS sees a coherent
+  // experience without having to manually toggle. Deployers can
+  // pin `dark` or `light` via NEXT_PUBLIC_DEFAULT_THEME if they
+  // want a specific first-paint regardless of OS preference.
+  return "system";
 }
 
 const DEFAULT_THEME = readDefaultTheme();
