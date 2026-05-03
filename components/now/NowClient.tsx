@@ -14,7 +14,7 @@ import { AdaptiveLightningCard } from "./AdaptiveLightningCard";
 import { AdaptiveRainCard } from "./AdaptiveRainCard";
 import { AlertsBanner } from "./AlertsBanner";
 import { MetricRow } from "./MetricRow";
-import { ForecastFiveDay } from "./ForecastFiveDay";
+import { ForecastDaily } from "./ForecastDaily";
 import { ForecastHourly } from "./ForecastHourly";
 import { HeroBlock } from "./HeroBlock";
 import { HorizonBand } from "./HorizonBand";
@@ -241,7 +241,7 @@ export function NowClient() {
       )}
 
       {days.length > 1 ? (
-        <ForecastFiveDay days={days} />
+        <ForecastDaily days={days} />
       ) : (
         <Skeleton className="h-44 w-full rounded-xl" />
       )}

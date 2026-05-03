@@ -10,28 +10,35 @@ import type { ForecastDaily, ForecastHourly } from "@/lib/tempest/types";
 import { WeatherIcon } from "./WeatherIcon";
 
 /**
- * Apple-Weather-style next-six-hours strip. Six cells across, each
- * showing time / icon / temp. When sunrise or sunset falls inside the
- * 6-hour window, the *single nearest* cell swaps its icon to a
- * sunrise / sunset glyph and the time switches to the exact event time.
+ * Apple-Weather-style next-24-hours strip. Horizontally scrollable
+ * row of fixed-width cells, each showing time / icon / temp. When
+ * sunrise or sunset falls inside the visible window, the *single
+ * nearest* cell swaps its icon to a sunrise / sunset glyph and the
+ * time switches to the exact event time.
  *
  * Two correctness notes:
  *
- * - **argmin, not symmetric ±30min**: if sunrise lands at exactly
- *   :30 between two hourly cells, both would satisfy a `±30min`
- *   predicate and render the same icon twice. Picking the closest
- *   cell index guarantees one event = one cell.
+ * - **B8** — argmin, not symmetric ±30min: if sunrise lands at exactly
+ *   :30 between two hourly cells, both used to satisfy the predicate
+ *   and render the same icon twice. Picking the closest cell index
+ *   guarantees one event = one cell.
  *
- * - **late-evening windows cross midnight**, so the strip needs
+ * - **R2** — late-evening windows cross midnight, so the strip needs
  *   tomorrow's sunrise too. We accept `days: ForecastDaily[]` and
  *   walk every entry, picking the sun event whose timestamp falls
- *   inside `[firstCellTs - 30min, lastCellTs + 30min]`.
+ *   inside `[firstCellTs - 30min, lastCellTs + 30min]`. With 24
+ *   visible hours both today's sunset and tomorrow's sunrise will
+ *   land in-window for any starting position.
  *
  * The strip pulls from `forecast.hourly[]` starting at the earliest
  * entry that's at or after the current hour minus a half-hour grace
  * window — the user's "now" lives in the bigger hero readout above;
- * this band is "what's coming".
+ * this band is "what's coming". On all viewports the row scrolls
+ * horizontally; cells have a fixed width so the rhythm stays
+ * consistent across screen sizes. Scrollbar is hidden via the two
+ * `[…]` arbitrary selectors below (one per browser engine).
  */
+const HOURS_VISIBLE = 24;
 export function HeroForecastStrip({
   hourly,
   days,
@@ -46,7 +53,7 @@ export function HeroForecastStrip({
     const startMs = now;
     return hourly
       .filter((h) => h.time * 1000 >= startMs - 30 * 60_000)
-      .slice(0, 6);
+      .slice(0, HOURS_VISIBLE);
   }, [hourly, now]);
 
   // Window covers the cells we render plus a half-hour grace either side
@@ -101,67 +108,66 @@ export function HeroForecastStrip({
   if (upcoming.length === 0) return null;
 
   return (
-    <div
-      className="grid gap-2"
-      style={{ gridTemplateColumns: `repeat(${upcoming.length}, minmax(0, 1fr))` }}
-    >
-      {upcoming.map((h, i) => {
-        const ts = h.time * 1000;
-        const tF = h.air_temperature != null ? cToF(h.air_temperature) : null;
-        const isSunrise = sunriseHit?.cellIdx === i;
-        const isSunset = sunsetHit?.cellIdx === i;
+    <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-2">
+        {upcoming.map((h, i) => {
+          const ts = h.time * 1000;
+          const tF = h.air_temperature != null ? cToF(h.air_temperature) : null;
+          const isSunrise = sunriseHit?.cellIdx === i;
+          const isSunset = sunsetHit?.cellIdx === i;
 
-        // Sunrise/sunset cells drop the AM/PM suffix — the dedicated
-        // glyph already conveys morning vs evening, and the shorter
-        // string ("5:41" vs "5:41 AM") fits the cell on narrow viewports
-        // where neighbouring "5 AM" cells comfortably do.
-        const timeLabel = isSunrise && sunriseHit
-          ? formatClock(sunriseHit.ts, tz).replace(/\s?[AP]M$/i, "")
-          : isSunset && sunsetHit
-            ? formatClock(sunsetHit.ts, tz).replace(/\s?[AP]M$/i, "")
-            : formatClock(ts, tz);
+          // Sunrise/sunset cells drop the AM/PM suffix — the dedicated
+          // glyph already conveys morning vs evening, and the shorter
+          // string ("5:41" vs "5:41 AM") fits the cell on narrow viewports
+          // where neighbouring "5 AM" cells comfortably do.
+          const timeLabel = isSunrise && sunriseHit
+            ? formatClock(sunriseHit.ts, tz).replace(/\s?[AP]M$/i, "")
+            : isSunset && sunsetHit
+              ? formatClock(sunsetHit.ts, tz).replace(/\s?[AP]M$/i, "")
+              : formatClock(ts, tz);
 
-        return (
-          <div
-            key={`${ts}-${i}`}
-            className="flex flex-col items-center gap-1.5 rounded-lg border border-border/40 bg-card/40 px-1 py-2"
-          >
-            <span className="whitespace-nowrap text-[10px] tabular text-muted-foreground">
-              {timeLabel.replace(":00", "")}
-            </span>
-            {isSunrise ? (
-              <Sunrise
-                className="size-5"
-                style={{ color: "var(--sunrise-marker)" }}
-                aria-label="Sunrise"
-              />
-            ) : isSunset ? (
-              <Sunset
-                className="size-5"
-                style={{ color: "var(--sunset-marker)" }}
-                aria-label="Sunset"
-              />
-            ) : (
-              <WeatherIcon
-                icon={h.icon}
-                className="size-5 text-primary/80"
-                ariaLabel={h.conditions ?? undefined}
-              />
-            )}
-            <span className="tabular text-sm font-medium">
-              {tF != null ? `${Math.round(tF)}°` : "—"}
-            </span>
-            {h.precip_probability != null && h.precip_probability >= 20 && (
-              <span
-                className="tabular text-[9px]"
-                style={{ color: "var(--icon-rain)" }}
-              >
-                💧{Math.round(h.precip_probability)}%
+          return (
+            <div
+              key={`${ts}-${i}`}
+              className="flex w-16 shrink-0 flex-col items-center gap-1.5 rounded-lg border border-border/40 bg-card/40 px-1 py-2"
+            >
+              <span className="whitespace-nowrap text-[10px] tabular text-muted-foreground">
+                {timeLabel.replace(":00", "")}
               </span>
-            )}
-          </div>
-        );
-      })}
+              {isSunrise ? (
+                <Sunrise
+                  className="size-5"
+                  style={{ color: "var(--sunrise-marker)" }}
+                  aria-label="Sunrise"
+                />
+              ) : isSunset ? (
+                <Sunset
+                  className="size-5"
+                  style={{ color: "var(--sunset-marker)" }}
+                  aria-label="Sunset"
+                />
+              ) : (
+                <WeatherIcon
+                  icon={h.icon}
+                  className="size-5 text-primary/80"
+                  ariaLabel={h.conditions ?? undefined}
+                />
+              )}
+              <span className="tabular text-sm font-medium">
+                {tF != null ? `${Math.round(tF)}°` : "—"}
+              </span>
+              {h.precip_probability != null && h.precip_probability >= 20 && (
+                <span
+                  className="tabular text-[9px]"
+                  style={{ color: "var(--icon-rain)" }}
+                >
+                  💧{Math.round(h.precip_probability)}%
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
