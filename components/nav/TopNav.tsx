@@ -61,7 +61,7 @@ export function TopNav() {
   const meta = useStationMeta();
   const stationName = meta.data?.stationName;
   return (
-    <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b bg-background pt-[env(safe-area-inset-top)]">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:gap-4">
         <Link
           href="/"
