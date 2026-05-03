@@ -108,21 +108,38 @@ describe("moonPhaseName", () => {
 });
 
 describe("nextEclipse", () => {
-  it("returns the first eclipse strictly after `from`", () => {
+  it("returns the first eclipse on or after `from`'s station-local day", () => {
     const before = new Date("2026-04-25T12:00:00Z");
-    const e = nextEclipse(before);
+    const e = nextEclipse(before, "UTC");
     expect(e).not.toBeNull();
-    expect(Date.parse(`${e!.date}T12:00:00Z`)).toBeGreaterThan(before.getTime());
+    // First cataloged eclipse is 2026-08-12, well after 2026-04-25.
+    expect(e!.date).toBe("2026-08-12");
   });
 
-  it("skips eclipses on the same calendar day (anchor at noon UTC)", () => {
-    // First cataloged eclipse is 2026-08-12. From midnight that day,
-    // we should still get *that* eclipse (noon anchor is later than
-    // midnight). From late on 2026-08-12, we should skip ahead.
-    const earlyOnDay = new Date("2026-08-12T00:00:00Z");
-    const lateOnDay = new Date("2026-08-12T18:00:00Z");
-    expect(nextEclipse(earlyOnDay)?.date).toBe("2026-08-12");
-    expect(nextEclipse(lateOnDay)?.date).not.toBe("2026-08-12");
+  it("keeps an eclipse visible for the whole local calendar day", () => {
+    // First cataloged event is on 2026-08-12. The lookup uses
+    // calendar-day comparison in the station tz, so any moment on
+    // that local day surfaces the eclipse — regardless of where
+    // greatest-eclipse falls in UTC. The next local day moves on
+    // to the next cataloged event.
+    expect(nextEclipse(new Date("2026-08-12T00:30:00Z"), "UTC")?.date)
+      .toBe("2026-08-12");
+    expect(nextEclipse(new Date("2026-08-12T23:30:00Z"), "UTC")?.date)
+      .toBe("2026-08-12");
+    expect(nextEclipse(new Date("2026-08-13T00:30:00Z"), "UTC")?.date)
+      .not.toBe("2026-08-12");
+  });
+
+  it("compares calendar days in the station timezone", () => {
+    // Same UTC instant — different stations land on different local
+    // calendar days. 2026-08-12T20:00:00Z is:
+    //   - 2026-08-12 13:00 in Los Angeles (Aug 12 → eclipse day)
+    //   - 2026-08-13 05:00 in Tokyo       (Aug 13 → eclipse already past)
+    const sameMoment = new Date("2026-08-12T20:00:00Z");
+    expect(nextEclipse(sameMoment, "America/Los_Angeles")?.date)
+      .toBe("2026-08-12");
+    expect(nextEclipse(sameMoment, "Asia/Tokyo")?.date)
+      .not.toBe("2026-08-12");
   });
 });
 

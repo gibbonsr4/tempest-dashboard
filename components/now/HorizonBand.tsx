@@ -204,6 +204,17 @@ export function HorizonBand({ latitude, longitude }: Props) {
   const remainingMs = isDaytime && sunsetMs != null ? sunsetMs - nowMs : 0;
   const untilSunriseMs =
     isBeforeSunrise && sunriseMs != null ? sunriseMs - nowMs : 0;
+  // Polar day/night detection: at extreme latitudes, neither sunrise
+  // nor sunset events exist for the day. Without this branch the
+  // state machine falls through to the "after sunset" fallback for
+  // both midnight-sun and polar-night, which is wrong half the time.
+  // Sample current sun altitude to disambiguate — positive means the
+  // sun is currently up (continuous day), negative means continuous
+  // night.
+  const noSunEvents = sunriseMs == null && sunsetMs == null;
+  const polarSunUp = noSunEvents
+    ? SunCalc.getPosition(new Date(nowMs), latitude, longitude).altitude > 0
+    : null;
 
   const phase = moonPhaseName(data.moonPhase);
 
@@ -224,20 +235,26 @@ export function HorizonBand({ latitude, longitude }: Props) {
   // crosses), so removing it from the per-minute path is a real win.
   const detail = React.useMemo(() => {
     const dayMid = new Date(dayStartMs + 12 * 3600_000);
-    const sunTimes = SunCalc.getTimes(dayMid, latitude, longitude);
+    // Reuse the already-validated event timestamps from `data.events`
+    // (the helper in `lib/astronomy/horizon.ts` strips polar NaN dates)
+    // rather than re-calling SunCalc.getTimes here, which would happily
+    // hand back NaN-bearing Date objects whose `instanceof Date` check
+    // passes silently.
     const daylightMs =
-      sunTimes.sunrise instanceof Date && sunTimes.sunset instanceof Date
-        ? sunTimes.sunset.getTime() - sunTimes.sunrise.getTime()
-        : null;
+      sunriseMs != null && sunsetMs != null ? sunsetMs - sunriseMs : null;
     return {
       daylightMs,
       deltaMs: daylightDeltaMs(dayMid, latitude, longitude),
       nextFull: nextMoonPhase(dayMid, "full"),
       nextNew: nextMoonPhase(dayMid, "new"),
       nextSol: nextSolstice(dayMid),
-      nextEcl: nextEclipse(dayMid),
+      // Pass `tz` so the lookup compares calendar days in station-
+      // local time rather than against a UTC noon anchor — keeps the
+      // eclipse visible for the entire local day on which it occurs,
+      // regardless of where greatest-eclipse falls in UTC.
+      nextEcl: nextEclipse(dayMid, tz),
     };
-  }, [dayStartMs, latitude, longitude]);
+  }, [dayStartMs, latitude, longitude, sunriseMs, sunsetMs, tz]);
 
   // Disclosure label reacts to upcoming events: when something
   // genuinely interesting is coming up (eclipse soon, solstice today,
@@ -256,7 +273,11 @@ export function HorizonBand({ latitude, longitude }: Props) {
       ? `daylight ${formatDuration(remainingMs)} remaining`
       : isBeforeSunrise
         ? `sunrise in ${formatDuration(untilSunriseMs)}`
-        : null,
+        : noSunEvents
+          ? polarSunUp
+            ? "midnight sun"
+            : "polar night"
+          : null,
     `moon ${phase}`,
   ]
     .filter(Boolean)
@@ -555,13 +576,17 @@ export function HorizonBand({ latitude, longitude }: Props) {
                 {sunsetLabel && (
                   <span className="whitespace-nowrap">{`↓ ${sunsetLabel}`}</span>
                 )}
-                {(sunriseLabel || sunsetLabel) && " · "}
+                {(sunriseLabel || sunsetLabel || noSunEvents) && " · "}
                 <span className="whitespace-nowrap">
                   {isDaytime
                     ? `daylight ${formatDuration(remainingMs)} remaining`
                     : isBeforeSunrise
                       ? `sunrise in ${formatDuration(untilSunriseMs)}`
-                      : "after sunset"}
+                      : noSunEvents
+                        ? polarSunUp
+                          ? "midnight sun"
+                          : "polar night"
+                        : "after sunset"}
                 </span>
               </span>
             </span>

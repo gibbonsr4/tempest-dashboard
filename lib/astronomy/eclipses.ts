@@ -39,6 +39,14 @@ export interface EclipseEvent {
  * 2026-05-03 from the NASA decade tables, covering ~10 years
  * through Aug 2036. Sorted strictly chronologically so
  * `nextEclipse()` can short-circuit on the first match.
+ *
+ * MAINTENANCE: when the tail starts running short — say, by 2034 —
+ * extend the array with future events from
+ * `eclipse.gsfc.nasa.gov/SEdecade` and `eclipse.gsfc.nasa.gov/LEdecade`.
+ * After the last cataloged event passes, the "Upcoming event" strip
+ * on the dashboard simply stops rendering (no fallback copy), so
+ * letting the catalog expire silently degrades the UX rather than
+ * breaking it.
  */
 export const ECLIPSES: EclipseEvent[] = [
   {
@@ -319,14 +327,38 @@ export const ECLIPSES: EclipseEvent[] = [
   },
 ];
 
-/** Return the next eclipse strictly after `from`, or null if none cataloged. */
-export function nextEclipse(from: Date): EclipseEvent | null {
-  const fromMs = from.getTime();
+/**
+ * Return the next eclipse on or after `from`'s station-local calendar
+ * day, or null if none cataloged.
+ *
+ * Both the catalog dates and `from` are reduced to a YYYY-MM-DD
+ * calendar day in the station's timezone, then compared as strings.
+ * This keeps an eclipse visible for the entire local day on which
+ * it occurs, regardless of when greatest-eclipse actually falls in
+ * UTC. The previous implementation anchored events at UTC noon and
+ * compared epoch ms, which (a) hid an eclipse from western timezones
+ * once local noon passed UTC noon — even though the eclipse was still
+ * the same calendar day locally — and (b) could shift the day
+ * boundary by ±1 in far-eastern timezones.
+ *
+ * Limitation: the catalog uses NASA's UTC date for the event. For
+ * stations far from UTC (e.g., Tokyo, UTC+9), an eclipse's local
+ * calendar day can differ from its UTC calendar day by ±1. Surfaces
+ * cleanly for the majority of timezones; misalignment in extreme
+ * cases is at most a single day and would require per-event UTC
+ * times in the dataset to resolve.
+ */
+export function nextEclipse(from: Date, tz: string): EclipseEvent | null {
+  // "en-CA" yields a YYYY-MM-DD format directly usable for ISO
+  // calendar-string comparison against the dataset's `date` field.
+  const todayYmd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(from);
   for (const e of ECLIPSES) {
-    // Anchor each event at noon UTC of the `date` so equality on the
-    // event's day still treats it as "today" rather than "in the past".
-    const eventMs = Date.parse(`${e.date}T12:00:00Z`);
-    if (eventMs > fromMs) return e;
+    if (e.date >= todayYmd) return e;
   }
   return null;
 }

@@ -42,11 +42,18 @@ export function daylightDeltaMs(
     lat,
     lon,
   );
+  // SunCalc returns Date objects with NaN times on polar days/nights
+  // when an event doesn't occur — `instanceof Date` still passes, so
+  // we have to also confirm the timestamp is valid. Without the
+  // `!isNaN(getTime())` guard, the panel renders `+NaNs vs yesterday`
+  // at extreme latitudes.
+  const valid = (d: Date | undefined | null): boolean =>
+    d instanceof Date && !Number.isNaN(d.getTime());
   if (
-    !(today.sunrise instanceof Date) ||
-    !(today.sunset instanceof Date) ||
-    !(yesterday.sunrise instanceof Date) ||
-    !(yesterday.sunset instanceof Date)
+    !valid(today.sunrise) ||
+    !valid(today.sunset) ||
+    !valid(yesterday.sunrise) ||
+    !valid(yesterday.sunset)
   ) {
     return null;
   }
