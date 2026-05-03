@@ -173,7 +173,7 @@ export function MonthlyWindGrid({ rows }: { rows: DeviceDailyAggregate[] }) {
             Wind by month
           </div>
           <div className="text-[10px] text-muted-foreground/70">
-            mph values are avg / peak gust
+            Avg / peak gust (mph)
           </div>
         </div>
         <div className="tabular text-[11px] text-muted-foreground">

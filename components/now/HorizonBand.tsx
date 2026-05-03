@@ -72,7 +72,7 @@ export function HorizonBand({ latitude, longitude }: Props) {
   // The day window spans station-local midnight → next station-local
   // midnight. `startOfStationDay` derives the offset for this exact
   // instant from the IANA tz string, so it stays correct across DST
-  // transitions (and across any zone, not just non-DST ones).
+  // transitions for any station, not just Phoenix's fixed offset.
   // Anchored to `nowMs` so a page held open across local midnight
   // automatically rolls forward.
   const dayStartMs = React.useMemo(
@@ -105,11 +105,11 @@ export function HorizonBand({ latitude, longitude }: Props) {
    */
   // Astronomically-correct altitude scale: map altitude to the
   // station's MAXIMUM POSSIBLE altitude (latitude-derived) rather
-  // than today's peak. Today's peak varies seasonally with
-  // latitude — daily-relative scaling silently flattens the
-  // seasonal signal. With latitude-relative scaling, summer arcs
-  // render tall, winter arcs render shallow, and equinox-ish days
-  // fall between.
+  // than today's peak. Today's peak varies seasonally — at Phoenix
+  // the sun reaches ~80° in summer and ~33° in winter — so daily-
+  // relative scaling silently flattens the seasonal signal. With
+  // latitude-relative scaling, summer arcs render tall, winter
+  // arcs render shallow, and equinox-ish days fall between.
   //
   // Max altitude is `90° − |lat| + tilt`, capped at 90° (zenith) so
   // tropical stations where the body can pass directly overhead
@@ -181,10 +181,29 @@ export function HorizonBand({ latitude, longitude }: Props) {
   const moonriseLabel = data.events.moonrise && formatClock(data.events.moonrise, tz);
   const moonsetLabel = data.events.moonset && formatClock(data.events.moonset, tz);
 
-  const remainingMs =
-    data.events.sunset && nowMs < data.events.sunset
-      ? data.events.sunset - nowMs
-      : 0;
+  // Three time-of-day states drive the sun-summary label:
+  //   1. Before sunrise → "sunrise in Xh Ym" (counting up to today's
+  //      sunrise from the pre-dawn hours)
+  //   2. During daylight → "daylight Xh Ym remaining" (sunset – now)
+  //   3. After sunset → "after sunset" (no countdown; the next event
+  //      worth surfacing is tomorrow's sunrise, which the band's
+  //      celestial-details panel covers)
+  //
+  // The earlier formulation only checked `nowMs < sunset`, which is
+  // ALSO true at 1 AM — yielding a misleading "daylight 18h remaining"
+  // before the sun has even come up. Anchoring against sunrise too
+  // makes the label honest about which phase we're in.
+  const sunriseMs = data.events.sunrise;
+  const sunsetMs = data.events.sunset;
+  const isBeforeSunrise = sunriseMs != null && nowMs < sunriseMs;
+  const isDaytime =
+    sunriseMs != null &&
+    sunsetMs != null &&
+    nowMs >= sunriseMs &&
+    nowMs < sunsetMs;
+  const remainingMs = isDaytime && sunsetMs != null ? sunsetMs - nowMs : 0;
+  const untilSunriseMs =
+    isBeforeSunrise && sunriseMs != null ? sunriseMs - nowMs : 0;
 
   const phase = moonPhaseName(data.moonPhase);
 
@@ -233,9 +252,11 @@ export function HorizonBand({ latitude, longitude }: Props) {
     sunriseLabel ? `Sunrise ${sunriseLabel}` : null,
     sunsetLabel ? `sunset ${sunsetLabel}` : null,
     `currently ${formatClock(nowMs, tz)}`,
-    remainingMs > 0
+    isDaytime
       ? `daylight ${formatDuration(remainingMs)} remaining`
-      : null,
+      : isBeforeSunrise
+        ? `sunrise in ${formatDuration(untilSunriseMs)}`
+        : null,
     `moon ${phase}`,
   ]
     .filter(Boolean)
@@ -521,14 +542,27 @@ export function HorizonBand({ latitude, longitude }: Props) {
           const sunSummary = (
             <span className="inline-flex items-center gap-2 tabular">
               <SubtitleSun />
+              {/* Wrap each segment in `whitespace-nowrap` so when the
+                  card is narrower than the full string (e.g. ~729px
+                  desktop), wrapping only ever happens at the `·`
+                  separators — never inside a duration like "5h 2m"
+                  or a phrase like "after sunset". */}
               <span>
-                {sunriseLabel && `↑ ${sunriseLabel}`}
+                {sunriseLabel && (
+                  <span className="whitespace-nowrap">{`↑ ${sunriseLabel}`}</span>
+                )}
                 {sunriseLabel && sunsetLabel && " · "}
-                {sunsetLabel && `↓ ${sunsetLabel}`}
+                {sunsetLabel && (
+                  <span className="whitespace-nowrap">{`↓ ${sunsetLabel}`}</span>
+                )}
                 {(sunriseLabel || sunsetLabel) && " · "}
-                {remainingMs > 0
-                  ? `daylight ${formatDuration(remainingMs)} remaining`
-                  : "after sunset"}
+                <span className="whitespace-nowrap">
+                  {isDaytime
+                    ? `daylight ${formatDuration(remainingMs)} remaining`
+                    : isBeforeSunrise
+                      ? `sunrise in ${formatDuration(untilSunriseMs)}`
+                      : "after sunset"}
+                </span>
               </span>
             </span>
           );

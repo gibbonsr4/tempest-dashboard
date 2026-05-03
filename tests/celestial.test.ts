@@ -12,31 +12,28 @@ import {
 import { moonPhaseName } from "@/lib/astronomy/horizon";
 import { nextEclipse, eclipseTypeLabel } from "@/lib/astronomy/eclipses";
 
-// Mid-northern-latitude fixture coords. Tests assert sign and rough
-// magnitude only, so any temperate-latitude location with seasonal
-// daylight variation works.
-const TEST_LOC = { lat: 40.0, lon: -100.0 };
+const PHX = { lat: 33.4484, lon: -112.074 };
 
 describe("daylightDeltaMs", () => {
   it("is positive in the spring (days getting longer)", () => {
-    // At mid-latitudes in mid-April daylight runs a few hundred ms
-    // to a couple minutes longer each day. Just assert sign.
+    // Phoenix mid-April: a few hundred ms to a couple minutes longer
+    // each day, depending on date. Just assert sign.
     const aprilDay = new Date("2026-04-15T12:00:00-07:00");
-    const delta = daylightDeltaMs(aprilDay, TEST_LOC.lat, TEST_LOC.lon);
+    const delta = daylightDeltaMs(aprilDay, PHX.lat, PHX.lon);
     expect(delta).not.toBeNull();
     expect(delta!).toBeGreaterThan(0);
   });
 
   it("is negative in the fall (days getting shorter)", () => {
     const octDay = new Date("2026-10-15T12:00:00-07:00");
-    const delta = daylightDeltaMs(octDay, TEST_LOC.lat, TEST_LOC.lon);
+    const delta = daylightDeltaMs(octDay, PHX.lat, PHX.lon);
     expect(delta).not.toBeNull();
     expect(delta!).toBeLessThan(0);
   });
 
   it("is small near the solstices", () => {
     const juneSolstice = new Date("2026-06-21T12:00:00-07:00");
-    const delta = daylightDeltaMs(juneSolstice, TEST_LOC.lat, TEST_LOC.lon);
+    const delta = daylightDeltaMs(juneSolstice, PHX.lat, PHX.lon);
     // Around solstices day-length changes by < 30s/day.
     expect(Math.abs(delta!)).toBeLessThan(30_000);
   });
@@ -102,11 +99,11 @@ describe("nextSolstice", () => {
 
 describe("moonPhaseName", () => {
   it("names canonical phases", () => {
-    expect(moonPhaseName(0)).toBe("new moon");
-    expect(moonPhaseName(0.25)).toBe("first quarter");
-    expect(moonPhaseName(0.5)).toBe("full moon");
-    expect(moonPhaseName(0.75)).toBe("last quarter");
-    expect(moonPhaseName(0.99)).toBe("new moon");
+    expect(moonPhaseName(0)).toBe("New moon");
+    expect(moonPhaseName(0.25)).toBe("First quarter");
+    expect(moonPhaseName(0.5)).toBe("Full moon");
+    expect(moonPhaseName(0.75)).toBe("Last quarter");
+    expect(moonPhaseName(0.99)).toBe("New moon");
   });
 });
 

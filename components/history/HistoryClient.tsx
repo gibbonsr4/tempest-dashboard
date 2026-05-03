@@ -431,6 +431,13 @@ export function HistoryClient() {
               <DailyAggregateChart
                 data={aggregates.rain}
                 compare={compareAggregates?.rain}
+                // sum-variant ignores smooth internally (averaging
+                // a sum destroys the burst signal), but the chart
+                // uses this prop as a "are we at long range?"
+                // signal to render an invisible placeholder under
+                // the label, keeping the rain card's header height
+                // matched with its smoothed siblings in the row.
+                smooth={isLong ? 7 : 0}
                 label="Rain (daily total)"
                 unit="in"
                 color="var(--chart-2)"

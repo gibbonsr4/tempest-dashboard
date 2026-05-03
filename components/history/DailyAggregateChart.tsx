@@ -194,7 +194,7 @@ export function DailyAggregateChart({
   } satisfies ChartConfig;
 
   return (
-    <Card className={className ?? "p-4"}>
+    <Card className={className ?? "p-4 h-full"}>
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           {!hideLabel && (
@@ -212,8 +212,24 @@ export function DailyAggregateChart({
               parsing as a single phrase about the chart's temporal
               resolution. */}
           {smooth > 0 && variant !== "sum" && (
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
-              smoothed ({smooth}-day)
+            <span className="text-[10px] text-muted-foreground/70">
+              Smoothed ({smooth}-day)
+            </span>
+          )}
+          {/* Invisible placeholder so sum-variant charts (rain) line
+              up vertically with their smoothed siblings in the same
+              grid row. We can't truthfully render a "smoothed (N-day)"
+              badge for a sum metric — averaging a sum destroys the
+              burst signal — and "daily totals" would just echo the
+              chart title. So we render the SAME text as the visible
+              badge with `visibility: hidden`: it stays in layout flow
+              with identical dimensions but renders nothing visible.
+              (Whitespace-only content gets collapsed by the browser
+              and reserves zero height, so the actual badge text is
+              required to guarantee the slot has the right height.) */}
+          {smooth > 0 && variant === "sum" && (
+            <span aria-hidden className="invisible text-[10px]">
+              Smoothed ({smooth}-day)
             </span>
           )}
         </div>

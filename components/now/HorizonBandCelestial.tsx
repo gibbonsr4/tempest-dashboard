@@ -201,7 +201,7 @@ export function CelestialPanel({
             <StatTile label="Civil dusk" value={fmt(data.events.dusk)} />
             {detail.nextSol && (
               <StatTile
-                label={`Next ${detail.nextSol.kind}`}
+                label={`${detail.nextSol.kind === "summer" ? "Summer" : "Winter"} solstice`}
                 value={formatMonthDay(detail.nextSol.date, tz)}
                 caption={`in ${daysUntil(nowMs, detail.nextSol.date, tz)}`}
               />
@@ -242,14 +242,14 @@ export function CelestialPanel({
             <StatTile label="Moonset" value={moonsetLabel ?? "—"} />
             {detail.nextFull && (
               <StatTile
-                label="Next full"
+                label="Next full moon"
                 value={formatMonthDay(detail.nextFull, tz)}
                 caption={`in ${daysUntil(nowMs, detail.nextFull, tz)}`}
               />
             )}
             {detail.nextNew && (
               <StatTile
-                label="Next new"
+                label="Next new moon"
                 value={formatMonthDay(detail.nextNew, tz)}
                 caption={`in ${daysUntil(nowMs, detail.nextNew, tz)}`}
               />

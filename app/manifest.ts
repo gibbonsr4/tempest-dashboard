@@ -13,12 +13,15 @@ import type { MetadataRoute } from "next";
  * itself. Background color matches the dark-theme background so the
  * launch splash doesn't flash white before first render.
  *
- * Icon strategy: one SVG (`public/icon.svg`) with `sizes: "any"` —
- * Android/Chrome scale the SVG to whatever size they need (192×192
- * at install, larger when the icon is used in app switcher etc.).
- * Skipping pre-rendered PNGs keeps the public release artifact-free
- * — anyone forking the repo can drop in custom icons by editing this
- * file and adding their own files in `public/`.
+ * Icon strategy: one SVG (`app/icon.svg`) with `sizes: "any"` —
+ * Next.js 16's metadata-file convention auto-detects it, adds the
+ * `<link rel="icon">` tag in `<head>`, AND serves it at the stable
+ * `/icon.svg` URL referenced below. Single source of truth for both
+ * the browser favicon and this manifest icon. Android/Chrome scale
+ * the SVG to whatever size they need (192×192 at install, larger
+ * in the app switcher, etc.). Skipping pre-rendered PNGs keeps the
+ * release artifact-free — anyone forking the repo can drop in
+ * custom icons by editing `app/icon.svg`.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {

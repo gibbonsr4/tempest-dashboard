@@ -1,9 +1,10 @@
 # Tempest · Personal Weather Dashboard
 
-A self-hostable dashboard for one WeatherFlow Tempest weather station.
-Live conditions, forecast, lightning + rain summaries, sunrise/sunset
-arc, AQI, severe-weather alerts, and a long-range history tab — built
-dark-first with a copper accent and three documented deploy paths.
+A modern dashboard for the WeatherFlow Tempest weather station. The **Now** tab shows current conditions — live wind,
+temperature, the 5-day and hourly forecast, sunrise/sunset, lightning,
+rain, AQI, severe-weather alerts, and station health. **Radar** is a
+live precipitation map centered on your station. **History** is a
+year-plus archive of charts with personal records and compare overlays.
 
 <!-- Screenshots: replace these with real captures before publishing.
      Suggested: Now (dark, desktop), History (1y view), mobile portrait. -->
@@ -13,25 +14,55 @@ dark-first with a copper accent and three documented deploy paths.
 ![Mobile](docs/screenshots/mobile.png)
 -->
 
-This repo is **single-user per deployment**: each clone runs for one
-person, one station. The station's location and timezone come from
-the Tempest API at runtime, so it works for any Tempest user anywhere.
+The UI is responsive, mobile-first, and themeable (light, dark, or
+system). Storm panels adapt to conditions; charts scale cleanly from
+phone to desktop. Once deployed, the dashboard installs to a phone's
+home screen as a standalone app (PWA).
+
+Installation is one click on Vercel (free tier) or Cloudflare Workers
+— no CLI required. Docker is supported for self-hosting.
+
+Each deployment serves a single Tempest station. Severe-weather alerts
+(NWS) and AQI (AirNow) cover the US only.
 
 ## Features
 
-- **Now tab** — live wind gauge with rapid-feed updates, hero block,
-  adaptive rain + lightning cards (collapse when quiet, expand during
-  storms), pressure / humidity / solar / AQI tiles, sunrise/sunset arc
-  with moon phase, 5-day + hourly forecast, station health
-- **History tab** — long-range charts for temp / humidity / pressure /
-  rain / wind / solar; range picker (D / W / M / Y); compare-vs-last-year
-  overlay; personal-records strip; wind rose
-- **NWS severe-weather alerts** — auto-banner at the top of the Now
-  tab when the station's location intersects an active alert
-- **PWA** — installable to phone home screen; opens standalone with
-  no browser chrome
-- **No first-party telemetry** — secrets stay on the server, no
-  trackers, no analytics
+### Now tab
+
+- Live wind gauge — updates every few seconds via the Tempest WebSocket
+- Current temperature, feels-like, conditions, and weather icon
+- Sunrise/sunset arc with sun position and moon phase
+- 5-day forecast and hourly forecast
+- Tiles for pressure, humidity, solar/UV, and AQI (US-only)
+- Rain and lightning panels that auto-expand when there's data to show
+- Severe-weather alert banner (US-only)
+- Station-health row: last-sample timestamp, battery, firmware,
+  elevation, and station ID
+
+### Radar tab
+
+A live precipitation radar map centered on your station, with a pin
+labeled by station name. Embedded from
+[Ventusky](https://www.ventusky.com/) — pan, zoom, and time-scrub
+behave the same as their standalone app.
+
+### History tab
+
+- Charts for temperature, humidity, pressure, rain, wind average, and
+  wind gust
+- Range picker: 24h / 7d / 30d / 90d / YTD / 1y
+- Compare overlay: previous period (short ranges) or same period last
+  year (long ranges)
+- Wind rose
+- Personal-records strip (today's, weekly, monthly, and yearly peaks)
+
+### Other
+
+- Installable as a PWA — opens standalone on your phone's home screen
+  with no browser chrome
+- Light, dark, and system themes; user toggle persists in localStorage
+- No first-party telemetry — no trackers, no analytics, secrets stay
+  server-side
 
 ## What you'll need
 
@@ -47,7 +78,7 @@ no CLI** — both are GitHub-connected, zero-terminal flows.
 
 ### 🚀 Vercel (easiest, ~5 min)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fgibbonsr4%2Ftempest-dashboard&env=TEMPEST_TOKEN,TEMPEST_STATION_ID,AIRNOW_API_KEY,NWS_USER_AGENT,NEXT_PUBLIC_DEFAULT_THEME&envDescription=The%20first%20four%20vars%20are%20required.%20NEXT_PUBLIC_DEFAULT_THEME%20is%20optional%20%28light%20%2F%20dark%20%2F%20system%2C%20defaults%20to%20dark%29.&envLink=https%3A%2F%2Fgithub.com%2Fgibbonsr4%2Ftempest-dashboard%23where-to-get-the-env-vars)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fgibbonsr4%2Ftempest-dashboard&env=TEMPEST_TOKEN,TEMPEST_STATION_ID,AIRNOW_API_KEY,NWS_USER_AGENT,NEXT_PUBLIC_DEFAULT_THEME&envDescription=The%20first%20four%20vars%20are%20required.%20NEXT_PUBLIC_DEFAULT_THEME%20is%20optional%20%28light%20%2F%20dark%20%2F%20system%2C%20defaults%20to%20system%29.&envLink=https%3A%2F%2Fgithub.com%2Fgibbonsr4%2Ftempest-dashboard%23where-to-get-the-env-vars)
 
 1. Click the button → Vercel forks the repo to your GitHub.
 2. Vercel prompts for the four environment variables; paste them in.
@@ -113,7 +144,9 @@ https://tempestwx.com/station/12345
 Free, instant signup at
 [docs.airnowapi.org/account/request](https://docs.airnowapi.org/account/request).
 You'll receive the key by email. The dashboard caches AQI for 1 hour;
-the daily request count stays well under the free tier.
+the daily request count stays well under the free tier. AirNow covers
+the US only — non-US users can still set the key, but the AQI tile
+won't show readings.
 
 ### `NWS_USER_AGENT` (required for production)
 
@@ -126,7 +159,8 @@ your-app-name (your-email@example.com)
 
 NWS rejects production requests without it. The dev server has a
 self-describing fallback, but please set this for any deployed
-instance — it's their TOS.
+instance — it's their TOS. The NWS only covers the US, so non-US
+deployments won't see severe-weather banners.
 
 ### `NEXT_PUBLIC_DEFAULT_THEME` (optional)
 
@@ -192,9 +226,9 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-Open <http://localhost:3000>. The page renders dark by default; toggle
-in the header. The live wind gauge populates within a few seconds as
-the WebSocket subscription opens.
+Open <http://localhost:3000>. The page follows your OS color scheme
+by default (toggle in the header to override). The live wind gauge
+populates within a few seconds as the WebSocket subscription opens.
 
 ### Verifying the build
 
@@ -232,6 +266,14 @@ no codegen, no DSLs.
   the values; everything propagates.
 - **Tiles** — each metric is its own component under
   `components/now/`. Add or remove by editing `<MetricRow />`.
+- **Upcoming eclipses** — the next-eclipse strip in the celestial-
+  details panel reads from a static dataset at
+  `lib/astronomy/eclipses.ts`, curated from NASA's Five Millennium
+  Catalog. Covers ~10 years through 2036 today; extend the array
+  with future entries from the NASA decade tables
+  (`eclipse.gsfc.nasa.gov`) when the tail runs short, or swap to
+  a computational backend (`astronomy-engine`) if zero-maintenance
+  becomes more compelling than the small TS file.
 
 ## Stack
 
@@ -244,7 +286,7 @@ no codegen, no DSLs.
 | Charts | Recharts |
 | Astronomy | `suncalc` |
 | Animations | Framer Motion |
-| Theme | `next-themes`, default dark, copper accent (`oklch(0.72 0.12 55)`) |
+| Theme | `next-themes`, system default, copper accent (`oklch(0.72 0.12 55)`) |
 | Build adapters | OpenNext-Cloudflare, Vercel native, Docker standalone |
 
 External APIs (all behind server-side Route Handlers — secrets never

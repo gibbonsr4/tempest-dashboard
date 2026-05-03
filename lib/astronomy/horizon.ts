@@ -119,13 +119,15 @@ export function horizonForDay(
 
 /** Friendly phase name for display. Matches NASA's eight-phase convention. */
 export function moonPhaseName(phase: number): string {
-  // phase 0/1 = new moon, 0.5 = full
-  if (phase < 0.03 || phase > 0.97) return "new moon";
-  if (phase < 0.22) return "waxing crescent";
-  if (phase < 0.28) return "first quarter";
-  if (phase < 0.47) return "waxing gibbous";
-  if (phase < 0.53) return "full moon";
-  if (phase < 0.72) return "waning gibbous";
-  if (phase < 0.78) return "last quarter";
-  return "waning crescent";
+  // phase 0/1 = new moon, 0.5 = full. Returns sentence-case strings
+  // ("Waning gibbous") to match the dashboard's other subtitle copy
+  // ("Highs, lows, and peaks", "Avg / peak gust (mph)").
+  if (phase < 0.03 || phase > 0.97) return "New moon";
+  if (phase < 0.22) return "Waxing crescent";
+  if (phase < 0.28) return "First quarter";
+  if (phase < 0.47) return "Waxing gibbous";
+  if (phase < 0.53) return "Full moon";
+  if (phase < 0.72) return "Waning gibbous";
+  if (phase < 0.78) return "Last quarter";
+  return "Waning crescent";
 }
