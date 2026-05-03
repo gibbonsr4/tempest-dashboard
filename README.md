@@ -135,8 +135,8 @@ First-paint theme. Three valid values:
 | Value | Behavior |
 |---|---|
 | `system` (default) | Follow the OS's `prefers-color-scheme`; flips automatically when the user's OS theme changes |
-| `dark` | Dark mode by default — matches the dashboard's design language |
-| `light` | Light mode by default |
+| `dark` | Dark mode regardless of OS preference — matches the dashboard's dark-first design language |
+| `light` | Light mode regardless of OS preference |
 
 Whatever the default, the user can always override via the toggle in
 the top nav, and their choice persists in `localStorage`. The
