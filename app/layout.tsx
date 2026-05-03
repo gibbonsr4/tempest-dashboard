@@ -30,6 +30,8 @@ export const metadata: Metadata = {
   description: "Live conditions, forecast, and history for a personal Tempest weather station.",
 };
 
+const themeColorScript = `!function(){try{var e=localStorage.getItem("theme"),t="${process.env.NEXT_PUBLIC_DEFAULT_THEME ?? ""}".toLowerCase().trim(),m=document.querySelector('meta[name="theme-color"]');if(!m)(m=document.createElement("meta")).name="theme-color",document.head.appendChild(m);("light"===e||"dark"===e)||(e="light"===t||"dark"===t?t:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"),m.content="light"===e?"#fefbf8":"#0b1219"}catch(e){}}();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -42,14 +44,7 @@ export default function RootLayout({
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        {/* Default theme-color matches the dark theme (which is also
-            the default theme — see ThemeProvider). The
-            <ThemeColorMeta /> client component below rewrites this
-            content attribute whenever the resolved theme changes, so
-            iOS Safari's status-bar / navigation tint follows the
-            user's manual toggle (we don't use prefers-color-scheme
-            here because ThemeProvider runs enableSystem=false). */}
-        <meta name="theme-color" content="#161a20" />
+        <script dangerouslySetInnerHTML={{ __html: themeColorScript }} />
 
         {/* Resource hints for the Radar tab's Ventusky iframe.
             `dns-prefetch` resolves the hostname; `preconnect` also
