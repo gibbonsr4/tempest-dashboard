@@ -6,6 +6,7 @@ import { useStationObs } from "@/lib/hooks/useStationObs";
 import { useForecast } from "@/lib/hooks/useForecast";
 import { useAlerts } from "@/lib/hooks/useAlerts";
 import { useMediaQuery } from "@/lib/hooks/useMediaQuery";
+import { useNow } from "@/lib/hooks/useNow";
 import { useRecentHistory } from "@/lib/hooks/useRecentHistory";
 import { TempestWs } from "@/lib/tempest/ws-client";
 import { ConfigError } from "@/components/shared/ConfigError";
@@ -20,17 +21,18 @@ import { HeroBlock } from "./HeroBlock";
 import { HorizonBand } from "./HorizonBand";
 import { LiveWindCard } from "./LiveWindCard";
 import { StationHealth } from "./StationHealth";
-import { shouldExpandRain, shouldPromoteLightning } from "@/lib/tempest/interpret";
-import { kmToMi } from "@/lib/tempest/conversions";
+import { hasRecentActivity } from "@/lib/tempest/interpret";
+import { computeStormBucketMs } from "@/lib/tempest/storm-window";
 
 /**
  * Owns the Now tab's data fetching, WebSocket lifecycle, and bento
  * composition. The page route renders <NowClient /> directly — the
  * server component shell only provides the html scaffold.
  *
- * Composition rule: when lightning is recent + close, the lightning
- * card promotes itself above the hero. Everything else holds its
- * place in the bento.
+ * Composition is fixed: the bento order never reflows based on
+ * conditions. Active rain / lightning surface through the
+ * side-by-side storm panel auto-expanding (see below) rather than
+ * relocating cards above the hero.
  */
 export function NowClient() {
   const meta = useStationMeta();
@@ -48,13 +50,30 @@ export function NowClient() {
   // unrelated content further down the page.
   const [rainOpen, setRainOpen] = React.useState(false);
   const [lightningOpen, setLightningOpen] = React.useState(false);
-  const [prevRainAutoOpen, setPrevRainAutoOpen] = React.useState(false);
-  const [prevLightningAutoOpen, setPrevLightningAutoOpen] =
-    React.useState(false);
+  const [prevPanelAutoOpen, setPrevPanelAutoOpen] = React.useState(false);
+  const [prevSideBySide, setPrevSideBySide] = React.useState(false);
   // Coupling threshold matches the grid's `sm:grid-cols-2`. Tailwind v4
   // default `sm` = 640px. SSR-safe; the hook returns `false` on first
   // render and updates to the real viewport on mount.
   const stormPanelSideBySide = useMediaQuery("(min-width: 640px)");
+  // Storm-panel hooks live above the config-error early return so the
+  // hook count stays stable when an error toggles on. The 24h history
+  // is intentionally separate from the cards' 30d query — at 144 fixed
+  // buckets the 30d payload is at ~5h cadence, too coarse for a
+  // recent-activity check or for deriving the histogram bucket size.
+  // The 24h query gives ~10-min cadence (the actual sensor cadence),
+  // which is what the storm panel needs.
+  const stormHistory = useRecentHistory(24);
+  const nowMs = useNow();
+  // Shared bucket width for the rain + lightning histograms. Median
+  // of consecutive sample intervals, snapped to a clean minute step
+  // (5/10/15/30/60). Computing this once at the panel level — and
+  // passing the same value to both cards — guarantees their x-axes
+  // line up bar-for-bar.
+  const stormBucketMs = React.useMemo(
+    () => computeStormBucketMs(stormHistory.data?.samples),
+    [stormHistory.data?.samples],
+  );
 
   // WebSocket lifecycle — start once we know the device id.
   React.useEffect(() => {
@@ -88,53 +107,77 @@ export function NowClient() {
     );
   }
 
-  // Build the lightning-promotion check from the latest obs.
-  const lastEpoch = obs?.lightning_strike_last_epoch ?? null;
-  const lastDistKm = obs?.lightning_strike_last_distance ?? null;
-  const promoteLightning = obs
-    ? shouldPromoteLightning({
-        lastStrikeEpochMs: lastEpoch && lastEpoch > 0 ? lastEpoch * 1000 : null,
-        lastStrikeMi:
-          lastDistKm != null && lastDistKm > 0 ? kmToMi(lastDistKm) : null,
-      })
-    : false;
-
   // ──────────────────────────────────────────────────────────────────
   // Storm panel — Rain + Lightning sit side-by-side at sm: and up,
-  // stacked below sm. The standalone-promoted lightning row above
-  // the hero (when `promoteLightning === true`) is rendered as an
-  // uncontrolled <AdaptiveLightningCard /> and keeps its own state —
-  // it's already special-cased and not part of the side-by-side pair.
+  // stacked below sm. Both cards always live in this row; the bento
+  // order doesn't reflow based on storm conditions.
   //
-  // Coupling rule:
-  //   - Side-by-side: toggling either card flips both. Avoids the
-  //     "tall expanded card next to a tiny collapsed sibling"
-  //     asymmetry that drove the original coupling.
+  // Coupling rule (manual + auto):
+  //   - Side-by-side: toggling either card flips both, and an auto-
+  //     expand trigger on either card opens both. Avoids the "tall
+  //     expanded card next to a tiny collapsed sibling" asymmetry on
+  //     a stormy day where one signal fires before the other.
   //   - Stacked (mobile): each card is independent. Forcing the
   //     second open below the first pushes unrelated content (hero,
   //     metrics, history band) further down the page for no gain.
   //
-  // Auto-expand: each card responds only to its OWN trigger.
-  //   - Rain: `shouldExpandRain` (any rain in the day or hour, or a
-  //     non-zero current rate)
-  //   - Lightning: `shouldPromoteLightning` (recent close strike)
-  // Once auto-opened, never auto-collapsed — same React-docs prop-
-  // change pattern AdaptiveCard uses internally for `promoted`.
-  const shouldRainAutoOpen = obs
-    ? shouldExpandRain({
-        lastHourPrecip: obs.precip_accum_last_1hr ?? 0,
-        dayTotal: obs.precip_accum_local_day ?? 0,
-        rateNow: obs.precip ?? 0,
-      })
-    : false;
-  const shouldLightningAutoOpen = obs ? promoteLightning : false;
-  if (prevRainAutoOpen !== shouldRainAutoOpen) {
-    setPrevRainAutoOpen(shouldRainAutoOpen);
-    if (shouldRainAutoOpen) setRainOpen(true);
+  // Auto-expand window: 12h rolling. A stormy day often has rain in
+  // the morning, a multi-hour lull, then a second wave in the
+  // afternoon — narrower windows would collapse the cards during the
+  // break and require the user to manually re-expand. 12h covers a
+  // single day's worth of storm patterns without bleeding yesterday's
+  // weather into today's clear sky.
+  // Once auto-opened, never auto-collapsed.
+  const shouldRainAutoOpen = hasRecentActivity(
+    stormHistory.data?.samples,
+    nowMs,
+    12,
+    (s) => s.rainMm,
+  );
+  const shouldLightningAutoOpen = hasRecentActivity(
+    stormHistory.data?.samples,
+    nowMs,
+    12,
+    (s) => s.lightningStrikeCount,
+  );
+  const shouldPanelAutoOpen =
+    shouldRainAutoOpen || shouldLightningAutoOpen;
+  // Two distinct effects, intentionally separate:
+  //
+  //  1. Auto-open on trigger transition. When the rolling-window
+  //     trigger flips false → true (panel went stale → live), open
+  //     whichever card is firing. On side-by-side we open both as a
+  //     pair; on stacked we open only the firing card. Never auto-
+  //     reopens after a manual collapse — `prevPanelAutoOpen` only
+  //     unblocks once the trigger goes false again.
+  //
+  //  2. Couple-on-cross-to-side-by-side. When the viewport widens
+  //     past the storm-panel breakpoint and *one* card is already
+  //     open (auto OR manual), sync the sibling so paired cards
+  //     never sit in the asymmetric "tall + tiny" state. If both are
+  //     closed when the breakpoint crosses (e.g. user manually
+  //     collapsed both on mobile while a storm is still live), we
+  //     respect that and don't reopen — coupling, not opening.
+  const triggerJustFired = !prevPanelAutoOpen && shouldPanelAutoOpen;
+  const crossedToSideBySide = !prevSideBySide && stormPanelSideBySide;
+  if (prevPanelAutoOpen !== shouldPanelAutoOpen) {
+    setPrevPanelAutoOpen(shouldPanelAutoOpen);
   }
-  if (prevLightningAutoOpen !== shouldLightningAutoOpen) {
-    setPrevLightningAutoOpen(shouldLightningAutoOpen);
-    if (shouldLightningAutoOpen) setLightningOpen(true);
+  if (prevSideBySide !== stormPanelSideBySide) {
+    setPrevSideBySide(stormPanelSideBySide);
+  }
+  if (triggerJustFired) {
+    if (stormPanelSideBySide) {
+      setRainOpen(true);
+      setLightningOpen(true);
+    } else {
+      if (shouldRainAutoOpen) setRainOpen(true);
+      if (shouldLightningAutoOpen) setLightningOpen(true);
+    }
+  }
+  if (crossedToSideBySide && (rainOpen || lightningOpen)) {
+    setRainOpen(true);
+    setLightningOpen(true);
   }
 
   // Toggle handlers — propagate to the sibling only when the panel
@@ -159,10 +202,6 @@ export function NowClient() {
           latitude={meta.data?.latitude}
           longitude={meta.data?.longitude}
         />
-      )}
-
-      {promoteLightning && obs && (
-        <AdaptiveLightningCard obs={obs} />
       )}
 
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
@@ -211,19 +250,21 @@ export function NowClient() {
             obs={obs}
             open={rainOpen}
             onOpenChange={handleRainToggle}
+            bucketMs={stormBucketMs}
           />
         ) : (
           <Skeleton className="h-12 rounded-xl" />
         )}
-        {!promoteLightning && obs ? (
+        {obs ? (
           <AdaptiveLightningCard
             obs={obs}
             open={lightningOpen}
             onOpenChange={handleLightningToggle}
+            bucketMs={stormBucketMs}
           />
-        ) : !obs ? (
+        ) : (
           <Skeleton className="h-12 rounded-xl" />
-        ) : null}
+        )}
       </div>
 
       {meta.data ? (

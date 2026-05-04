@@ -4,7 +4,7 @@ import {
   conditionsPhrase,
   interpretPressure,
   pressureRateMbPerHr,
-  shouldExpandRain,
+  hasRecentActivity,
   shouldPromoteLightning,
   uvBand,
 } from "@/lib/tempest/interpret";
@@ -81,7 +81,7 @@ describe("conditionsPhrase", () => {
 });
 
 describe("shouldPromoteLightning", () => {
-  it("promotes when close + recent", () => {
+  it("flags an active local strike (close + recent)", () => {
     expect(
       shouldPromoteLightning({
         lastStrikeEpochMs: Date.now() - 5 * 60_000,
@@ -89,7 +89,7 @@ describe("shouldPromoteLightning", () => {
       }),
     ).toBe(true);
   });
-  it("does not promote when far away", () => {
+  it("ignores distant strikes even when recent", () => {
     expect(
       shouldPromoteLightning({
         lastStrikeEpochMs: Date.now() - 5 * 60_000,
@@ -97,7 +97,7 @@ describe("shouldPromoteLightning", () => {
       }),
     ).toBe(false);
   });
-  it("does not promote when stale", () => {
+  it("ignores stale strikes even when close", () => {
     expect(
       shouldPromoteLightning({
         lastStrikeEpochMs: Date.now() - 90 * 60_000,
@@ -189,17 +189,45 @@ describe("pressureRateMbPerHr", () => {
   });
 });
 
-describe("shouldExpandRain", () => {
-  it("expands when actively raining", () => {
-    expect(shouldExpandRain({ lastHourPrecip: 0, dayTotal: 0, rateNow: 0.1 }))
-      .toBe(true);
+describe("hasRecentActivity", () => {
+  const HOUR = 60 * 60_000;
+  const now = 1_700_000_000_000;
+  it("returns true for a positive sample inside the window", () => {
+    const samples = [
+      { ts: now - 6 * HOUR, value: 0.5 },
+      { ts: now - 1 * HOUR, value: 0 },
+    ];
+    expect(hasRecentActivity(samples, now, 12, (s) => s.value)).toBe(true);
   });
-  it("expands when day total is non-zero", () => {
-    expect(shouldExpandRain({ lastHourPrecip: 0, dayTotal: 1.5, rateNow: 0 }))
-      .toBe(true);
+  it("ignores samples older than the window", () => {
+    const samples = [
+      { ts: now - 18 * HOUR, value: 5 },
+      { ts: now - 13 * HOUR, value: 2 },
+    ];
+    expect(hasRecentActivity(samples, now, 12, (s) => s.value)).toBe(false);
   });
-  it("collapses when fully dry", () => {
-    expect(shouldExpandRain({ lastHourPrecip: 0, dayTotal: 0, rateNow: 0 }))
-      .toBe(false);
+  it("includes the cutoff timestamp inclusively (sample at exactly now − windowHours)", () => {
+    const samples = [{ ts: now - 12 * HOUR, value: 1 }];
+    expect(hasRecentActivity(samples, now, 12, (s) => s.value)).toBe(true);
+  });
+  it("returns false when every in-window value is zero", () => {
+    const samples = [
+      { ts: now - 2 * HOUR, value: 0 },
+      { ts: now - 4 * HOUR, value: 0 },
+    ];
+    expect(hasRecentActivity(samples, now, 12, (s) => s.value)).toBe(false);
+  });
+  it("treats null and non-finite values as zero", () => {
+    const samples = [
+      { ts: now - 1 * HOUR, value: null as number | null },
+      { ts: now - 2 * HOUR, value: Number.NaN },
+    ];
+    expect(hasRecentActivity(samples, now, 12, (s) => s.value)).toBe(false);
+  });
+  it("returns false on empty or undefined samples", () => {
+    expect(hasRecentActivity([], now, 12, (s: { ts: number }) => 0)).toBe(false);
+    expect(
+      hasRecentActivity(undefined, now, 12, (s: { ts: number }) => 0),
+    ).toBe(false);
   });
 });

@@ -17,15 +17,22 @@ import { startOfStationDay } from "@/lib/tempest/format";
  *  3 hours back from `now` so the storm reads as "ongoing" rather
  *  than collapsing to a single bar at the right edge. */
 const MIN_WINDOW_MS = 3 * 3600_000;
+/** Lead-in padding before the first storm sample. Without it the
+ *  first bar sits flush against the chart's left edge with no
+ *  breathing room — a small gap makes "the storm started here"
+ *  read more naturally. */
+const PRE_STORM_PAD_MS = 30 * 60_000;
 
 export interface StormWindow {
   /** All samples (zero or non-zero) since station-local midnight that
    *  carry a finite value for the chosen field. The histogram bins
    *  these into per-bucket counts/totals. */
   samples: { ts: number; value: number }[];
-  /** Epoch ms — chart's left edge. `max(todayStart, min(firstNonZero,
-   *  now - 3h))`: pinned to today's start so a strike at 1 AM doesn't
-   *  drag the axis into yesterday. */
+  /** Epoch ms — chart's left edge.
+   *  `max(todayStart, min(firstNonZero - PRE_STORM_PAD_MS, now - MIN_WINDOW_MS))`:
+   *  pinned to today's start so a 1 AM strike doesn't drag the axis
+   *  into yesterday, with a 30-min lead-in before the first sample so
+   *  the first bar isn't flush against the chart's left edge. */
   startMs: number;
   /** Epoch ms — chart's right edge (`now`). */
   endMs: number;
@@ -64,7 +71,53 @@ export function buildStormWindow(
   if (firstNonZeroTs == null) return null;
   const startMs = Math.max(
     todayStart,
-    Math.min(firstNonZeroTs, now - MIN_WINDOW_MS),
+    Math.min(firstNonZeroTs - PRE_STORM_PAD_MS, now - MIN_WINDOW_MS),
   );
   return { samples: stormSamples, startMs, endMs: now };
+}
+
+/** Allowed bucket widths for the paired storm histograms, in
+ *  minutes. Anything that falls between snaps to the closest entry. */
+const BUCKET_SNAP_MIN = [5, 10, 15, 30, 60] as const;
+const FALLBACK_BUCKET_MS = 30 * 60_000;
+
+/**
+ * Pick a single bucket width (ms) for the rain + lightning histograms
+ * from the underlying history cadence. Both cards pull from the same
+ * `useRecentHistory` query, so deriving one width here and passing it
+ * to both gives them matching x-axes — paired bars at the same time
+ * scale instead of one card at 32-min and the other at 29-min.
+ *
+ * Median (not mean) of consecutive sample intervals so a single dropped
+ * sample doesn't drag the cadence estimate. Result is snapped to the
+ * nearest entry in `BUCKET_SNAP_MIN` so tooltips and tick labels land
+ * on whole-minute steps.
+ */
+export function computeStormBucketMs(
+  samples: HistorySample[] | undefined,
+): number {
+  if (!samples || samples.length < 2) return FALLBACK_BUCKET_MS;
+  const intervals: number[] = [];
+  for (let i = 1; i < samples.length; i++) {
+    const dt = samples[i].ts - samples[i - 1].ts;
+    if (dt > 0) intervals.push(dt);
+  }
+  if (intervals.length === 0) return FALLBACK_BUCKET_MS;
+  intervals.sort((a, b) => a - b);
+  const mid = intervals.length / 2;
+  const medianMs =
+    intervals.length % 2 === 0
+      ? (intervals[mid - 1] + intervals[mid]) / 2
+      : intervals[Math.floor(mid)];
+  const medianMin = medianMs / 60_000;
+  let snapped: number = BUCKET_SNAP_MIN[0];
+  let bestDelta = Math.abs(snapped - medianMin);
+  for (const candidate of BUCKET_SNAP_MIN) {
+    const delta = Math.abs(candidate - medianMin);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      snapped = candidate;
+    }
+  }
+  return snapped * 60_000;
 }

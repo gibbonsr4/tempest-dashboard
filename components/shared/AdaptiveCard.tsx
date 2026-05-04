@@ -7,22 +7,13 @@ import { cn } from "@/lib/utils";
 
 /**
  * A bento card that flips between a one-line summary (collapsed) and a
- * detailed view (expanded). Used for rain and lightning, both of which
- * have a quiet steady state and a "promote me" active state.
- *
- * The "promoted" prop signals importance — an actively-firing module
- * gets a copper ring + subtle scale to catch the eye without being
- * gaudy.
+ * detailed view (expanded).
  *
  * Controlled vs uncontrolled:
- *   - Pass nothing: the card owns its own open state, seeded from
- *     `defaultExpanded` and force-opened when `promoted` flips on.
+ *   - Pass nothing: the card owns its own open state, starting closed.
  *   - Pass `open` + `onOpenChange`: the parent owns state. The card
  *     reflects `open` as-is and reports user toggles through
- *     `onOpenChange`. `defaultExpanded` and the auto-expand-on-
- *     `promoted` heuristic are skipped — the parent is responsible for
- *     deciding when to auto-open. (`promoted` still drives the visual
- *     ring either way.)
+ *     `onOpenChange`.
  *   This mirrors the controlled/uncontrolled split Radix and shadcn
  *   primitives use, so coupling two cards together (e.g., the rain +
  *   lightning storm panel) just means lifting the state up.
@@ -30,8 +21,6 @@ import { cn } from "@/lib/utils";
 export function AdaptiveCard({
   collapsed,
   expanded,
-  promoted = false,
-  defaultExpanded = false,
   open: openProp,
   onOpenChange,
   ariaLabel,
@@ -39,29 +28,16 @@ export function AdaptiveCard({
 }: {
   collapsed: React.ReactNode;
   expanded: React.ReactNode;
-  promoted?: boolean;
-  defaultExpanded?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   ariaLabel: string;
   className?: string;
 }) {
   const isControlled = openProp !== undefined;
-  const [internalOpen, setInternalOpen] = React.useState(defaultExpanded);
-  const [prevPromoted, setPrevPromoted] = React.useState(promoted);
+  const [internalOpen, setInternalOpen] = React.useState(false);
   const reduce = useReducedMotion();
 
   const open = isControlled ? openProp : internalOpen;
-
-  // "Adjusting state on prop change" pattern (per the React docs):
-  // when `promoted` flips on, force-expand. We never auto-collapse
-  // when promotion ends — the user may have intentionally expanded.
-  // In controlled mode, the parent owns this decision; we just
-  // record the new `prevPromoted` so a future flip is detected.
-  if (prevPromoted !== promoted) {
-    setPrevPromoted(promoted);
-    if (promoted && !isControlled) setInternalOpen(true);
-  }
 
   const handleToggle = () => {
     const next = !open;
@@ -79,7 +55,6 @@ export function AdaptiveCard({
       }
       className={cn(
         "rounded-xl border bg-card text-card-foreground shadow-sm",
-        promoted && "border-primary/50 ring-1 ring-primary/30",
         className,
       )}
     >

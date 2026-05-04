@@ -25,8 +25,10 @@ import type { StationObs } from "@/lib/tempest/types";
  * data has ever been reported; otherwise shows the most recent strike
  * (distance + age) — even if it was weeks ago.
  *
- * Promotion (visual ring + auto-expand) only fires when the strike is
- * both recent (< 30 min) and close (< 10 mi) — see `shouldPromoteLightning`.
+ * Active-strike accent: when the most recent strike is both recent
+ * (< 30 min) and close (< 10 mi) — see `shouldPromoteLightning` — the
+ * Zap icon tints copper to flag the event at a glance. The card's
+ * open state is owned by NowClient's coupled storm-panel logic.
  *
  * Expanded view surfaces:
  *   - last strike (mi + age)
@@ -48,22 +50,27 @@ export function AdaptiveLightningCard({
   obs,
   open,
   onOpenChange,
+  bucketMs,
 }: {
   obs: StationObs;
-  /** Optional controlled open state. Pass alongside `onOpenChange` to
-   *  couple this card's expand/collapse with a sibling (e.g., the
-   *  paired rain card in the storm panel). Omit both to fall back to
-   *  the card's internal auto-expand on `shouldPromoteLightning`. */
+  /** Controlled open state. Paired with `onOpenChange` to couple this
+   *  card's expand/collapse with the rain card in the storm panel. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Histogram bucket width (ms). Computed once at the storm-panel
+   *  level so rain + lightning charts share an x-axis. */
+  bucketMs: number;
 }) {
   const now = useNow();
   const tz = useStationTz();
-  // 30-day window covers both the storm-window histogram (last
-  // 24h slice) and the historical totals (yesterday / 7-day /
-  // month) without a second fetch — TanStack dedupes with the rain
-  // card's identical query.
-  const history = useRecentHistory(24 * 30);
+  // Two history windows. The 24h query carries the today-resolution
+  // samples (~10-min cadence) the storm histogram needs to render
+  // densely. The 30d query feeds the today / yesterday / month
+  // totals via `sumSamplesByPeriod`, where 5-h-bucket cadence is fine
+  // since we only sum. TanStack dedupes both with the rain card and
+  // NowClient.
+  const stormHistory = useRecentHistory(24);
+  const monthHistory = useRecentHistory(24 * 30);
 
   const lastEpoch = obs.lightning_strike_last_epoch ?? null;
   const lastDistKm = obs.lightning_strike_last_distance ?? null;
@@ -81,7 +88,7 @@ export function AdaptiveLightningCard({
   const recentDistMi =
     lastDistKm != null && lastDistKm > 0 ? kmToMi(lastDistKm) : null;
 
-  const promoted = shouldPromoteLightning({
+  const activeStrikeAccent = shouldPromoteLightning({
     lastStrikeEpochMs: recentEpochMs,
     lastStrikeMi: recentDistMi,
     now,
@@ -98,11 +105,11 @@ export function AdaptiveLightningCard({
   const totals = React.useMemo(
     () =>
       sumSamplesByPeriod(
-        history.data?.samples,
+        monthHistory.data?.samples,
         computePeriodBoundaries(now, tz),
         (s) => s.lightningStrikeCount,
       ) ?? { today: null, yesterday: null, month: null },
-    [history.data?.samples, now, tz],
+    [monthHistory.data?.samples, now, tz],
   );
 
   // Year-to-date strike count via the long-window aggregates
@@ -138,12 +145,12 @@ export function AdaptiveLightningCard({
   const histogram = React.useMemo(
     () =>
       buildStormWindow(
-        history.data?.samples,
+        stormHistory.data?.samples,
         now,
         tz,
         (s) => s.lightningStrikeCount,
       ),
-    [history.data?.samples, now, tz],
+    [stormHistory.data?.samples, now, tz],
   );
 
   const activeNow = count1hr > 0;
@@ -153,7 +160,7 @@ export function AdaptiveLightningCard({
       <Zap
         className="size-4"
         style={{
-          color: promoted
+          color: activeStrikeAccent
             ? "var(--icon-lightning)"
             : "var(--muted-foreground)",
         }}
@@ -205,8 +212,12 @@ export function AdaptiveLightningCard({
             startMs={histogram.startMs}
             endMs={histogram.endMs}
             tz={tz}
+            bucketMs={bucketMs}
             color="currentColor"
             ariaLabel="Strike count over the storm window"
+            label="Lightning"
+            unit="strikes"
+            formatValue={(n) => Math.round(n).toString()}
           />
         </div>
       )}
@@ -245,8 +256,6 @@ export function AdaptiveLightningCard({
     <AdaptiveCard
       collapsed={Collapsed}
       expanded={Expanded}
-      promoted={promoted}
-      defaultExpanded={hasRecord && promoted}
       open={open}
       onOpenChange={onOpenChange}
       ariaLabel="Lightning summary, click to toggle detail"

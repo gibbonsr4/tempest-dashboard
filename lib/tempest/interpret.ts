@@ -218,9 +218,13 @@ export function conditionsPhrase(input: {
 
 
 /**
- * Whether the lightning module should promote itself above the hero —
- * a recent strike inside the configured radius means the user wants to
- * know *now*, regardless of what else is on screen.
+ * Whether there's an active local-strike condition — most recent
+ * strike < 30 min ago AND < 10 mi away. Drives the lightning card's
+ * Zap-icon copper tint (visible at a glance even when the card is
+ * collapsed), and the "STORM IN PROGRESS" hero badge inside the
+ * expanded card. Does NOT drive auto-expand or layout — the storm
+ * panel is always paired and uses the broader `hasRecentActivity`
+ * window for opens.
  */
 export function shouldPromoteLightning(input: {
   lastStrikeEpochMs: number | null;
@@ -233,20 +237,28 @@ export function shouldPromoteLightning(input: {
 }
 
 /**
- * Whether the rain module should expand from one-line to detail mode —
- * either the station has reported rain in the last hour or any of the
- * day-totals are non-zero.
+ * Whether any sample within the last `windowHours` carries a positive
+ * value for the field returned by `valueFn`. Powers the storm-panel
+ * auto-expand on a 12h rolling window — a stormy day with hour-long
+ * lulls keeps the cards open instead of collapsing during dry breaks.
+ *
+ * Generic over sample shape so the same scan handles `rainMm` for the
+ * rain card and `lightningStrikeCount` for lightning.
  */
-export function shouldExpandRain(input: {
-  lastHourPrecip: number | null;
-  dayTotal: number | null;
-  rateNow: number | null;
-}): boolean {
-  return Boolean(
-    (input.lastHourPrecip ?? 0) > 0 ||
-      (input.rateNow ?? 0) > 0 ||
-      (input.dayTotal ?? 0) > 0,
-  );
+export function hasRecentActivity<S extends { ts: number }>(
+  samples: S[] | null | undefined,
+  now: number,
+  windowHours: number,
+  valueFn: (s: S) => number | null | undefined,
+): boolean {
+  if (!samples || samples.length === 0) return false;
+  const cutoffMs = now - windowHours * 60 * 60_000;
+  for (const s of samples) {
+    if (s.ts < cutoffMs) continue;
+    const v = valueFn(s);
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) return true;
+  }
+  return false;
 }
 
 /**

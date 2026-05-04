@@ -11,7 +11,6 @@ import { useNow } from "@/lib/hooks/useNow";
 import { useRecentHistory } from "@/lib/hooks/useRecentHistory";
 import { mmToIn } from "@/lib/tempest/conversions";
 import { buildStormWindow } from "@/lib/tempest/storm-window";
-import { shouldExpandRain } from "@/lib/tempest/interpret";
 import {
   computePeriodBoundaries,
   sumSamplesByPeriod,
@@ -23,13 +22,18 @@ import type { StationObs } from "@/lib/tempest/types";
  * Rain summary card.
  *
  * Today / yesterday / last-hour totals come from the station obs
- * directly (`precip_accum_*`). The expanded view also shows a
- * **month-to-date** total computed by summing the proxy's bucketed
- * `rainMm` values back to the first of the current month in the
- * station's tz. We use the existing `useRecentHistory(720)` (the same
- * 30-day window the metric tiles already drive — TanStack dedupes the
- * fetch) which is always enough headroom for any current calendar
- * month: even on the 31st we look back at most 31 days.
+ * directly (`precip_accum_*`). The expanded view shows two derived
+ * pieces:
+ *
+ *   - **Storm-window histogram** — built from `useRecentHistory(24)`
+ *     so the chart has the ~10-min cadence the proxy exposes for a
+ *     single-day window. The 30-day query at the same fixed bucket
+ *     count would land at ~5h cadence — too coarse to render a
+ *     useful storm shape.
+ *   - **Month-to-date total** — built from `useRecentHistory(720)`
+ *     summing bucketed `rainMm` back to the first of the current
+ *     month in the station's tz. The coarser cadence is fine here
+ *     because we only sum, not render.
  *
  * Year-to-date rain comes from the long-window aggregates endpoint
  * (`useDailyAggregates(365)`), summing Tempest's verified daily
@@ -41,18 +45,26 @@ export function AdaptiveRainCard({
   obs,
   open,
   onOpenChange,
+  bucketMs,
 }: {
   obs: StationObs;
-  /** Optional controlled open state. Pass alongside `onOpenChange` to
-   *  couple this card's expand/collapse with a sibling (e.g., the
-   *  paired lightning card in the storm panel). Omit both to fall
-   *  back to the card's internal auto-expand. */
+  /** Controlled open state. Paired with `onOpenChange` to couple this
+   *  card's expand/collapse with the lightning card in the storm panel. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Histogram bucket width (ms). Computed once at the storm-panel
+   *  level so rain + lightning charts share an x-axis. */
+  bucketMs: number;
 }) {
   const tz = useStationTz();
   const now = useNow();
-  const history = useRecentHistory(24 * 30);
+  // Two history windows. The 24h query carries the today-resolution
+  // samples (~10-min cadence) the storm histogram needs to render
+  // densely. The 30d query is required for the month-to-date tile,
+  // where 5-h-bucket cadence is fine since we only sum. TanStack
+  // dedupes both with the lightning card and NowClient.
+  const stormHistory = useRecentHistory(24);
+  const monthHistory = useRecentHistory(24 * 30);
 
   const dayMm = obs.precip_accum_local_day ?? 0;
   const lastHourMm = obs.precip_accum_last_1hr ?? 0;
@@ -78,12 +90,12 @@ export function AdaptiveRainCard({
   // here, but it keeps the boundary math centralized + DST-safe.
   const monthIn = React.useMemo(() => {
     const totals = sumSamplesByPeriod(
-      history.data?.samples,
+      monthHistory.data?.samples,
       computePeriodBoundaries(now, tz),
       (s) => s.rainMm,
     );
     return totals ? mmToIn(totals.month) : null;
-  }, [history.data?.samples, now, tz]);
+  }, [monthHistory.data?.samples, now, tz]);
 
   // Year-to-date rain via the long-window aggregates endpoint.
   // Sums `rainAccumFinalMm` (Tempest's verified daily total — their
@@ -118,12 +130,6 @@ export function AdaptiveRainCard({
     return touched ? mmToIn(totalMm) : 0;
   }, [aggregates.data?.aggregates, now, tz]);
 
-  const expanded = shouldExpandRain({
-    lastHourPrecip: lastHourMm,
-    dayTotal: dayMm,
-    rateNow: minuteMm,
-  });
-
   // Storm-window histogram of rain over the day's active window.
   // See `buildStormWindow` for the windowing rule (clamps to station-
   // local midnight, floors at `now − 3h`). Skipped entirely on days
@@ -133,8 +139,8 @@ export function AdaptiveRainCard({
     () =>
       dayMm <= 0
         ? null
-        : buildStormWindow(history.data?.samples, now, tz, (s) => s.rainMm),
-    [history.data?.samples, dayMm, now, tz],
+        : buildStormWindow(stormHistory.data?.samples, now, tz, (s) => s.rainMm),
+    [stormHistory.data?.samples, dayMm, now, tz],
   );
 
   const Collapsed = (
@@ -178,8 +184,12 @@ export function AdaptiveRainCard({
             startMs={histogram.startMs}
             endMs={histogram.endMs}
             tz={tz}
+            bucketMs={bucketMs}
             color="currentColor"
             ariaLabel="Rain intensity over the storm window"
+            label="Rain"
+            unit="in"
+            formatValue={(mm) => mmToIn(mm).toFixed(2)}
           />
         </div>
       )}
@@ -214,8 +224,6 @@ export function AdaptiveRainCard({
     <AdaptiveCard
       collapsed={Collapsed}
       expanded={Expanded}
-      promoted={expanded}
-      defaultExpanded={expanded}
       open={open}
       onOpenChange={onOpenChange}
       ariaLabel="Rain summary, click to toggle detail"
