@@ -6,7 +6,7 @@ rain, AQI, severe-weather alerts, and station health. **Radar** is a
 live precipitation map centered on your station. **History** is a
 year-plus archive of charts with personal records and compare overlays.
 
-(docs/screenshots/tempest-dashboard-desktop.gif)
+![dark and light themes of the now tab](docs/screenshots/tempest-dashboard-desktop.gif)
 
 <!-- Screenshots: replace these with real captures before publishing.
      Suggested: Now (dark, desktop), History (1y view), mobile portrait. -->
