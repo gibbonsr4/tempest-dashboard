@@ -61,12 +61,17 @@ export async function GET(req: NextRequest) {
     const { hours, buckets, before } = parsed.data;
 
     // R13: cap the total reach. `before + hours` is how far back we go
-    // from now; past MAX_HOURS the upstream response gets truncated
-    // silently. Reject explicitly so the client sees a clear error.
-    if (before + hours > MAX_HOURS) {
+    // from now. The compare overlay legitimately doubles it (a 30d
+    // window with before=30d looks at days 30-60 ago), so the combined
+    // ceiling is 2*MAX_HOURS = 60 days. The requested window itself
+    // (`hours`, capped at MAX_HOURS via the schema) stays ≤ 30d, which
+    // is what keeps Tempest in the per-minute `obs_st` regime — the
+    // 180-day `obs_st_ext` transition is governed by window duration,
+    // not by how far back the window sits.
+    if (before + hours > 2 * MAX_HOURS) {
       return NextResponse.json(
         {
-          error: `before + hours (${before + hours}) exceeds MAX_HOURS (${MAX_HOURS})`,
+          error: `before + hours (${before + hours}) exceeds 2 * MAX_HOURS (${2 * MAX_HOURS})`,
         },
         { status: 400 },
       );
