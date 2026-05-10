@@ -23,10 +23,15 @@ import type { AlertsFeatureCollection } from "@/lib/nws/schemas";
  *
  *   The expanded list's `<SeverityChip />` carries the per-row
  *   three-tier gradation (destructive / primary / muted) when it
- *   matters at finer granularity than the banner can show.
+ *   matters at finer granularity than the banner can show. Chips
+ *   are filled solid (token-paired bg + foreground) so they pop
+ *   off the alpha-tinted banner regardless of banner tone.
  *
  * Multiple alerts collapse into an expandable list, sorted in the
- * same order as the headline pick.
+ * same order as the headline pick. The collapsed header names the
+ * additional events on a secondary line ("+ Air Quality Alert,
+ * Tornado Watch") so the user sees what's stacked behind the
+ * primary headline without having to expand.
  */
 export function AlertsBanner({
   alerts,
@@ -105,36 +110,49 @@ export function AlertsBanner({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-4 rounded-md text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/70"
+        className="flex w-full flex-col gap-1 rounded-md text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/70"
       >
-        <div className="flex min-w-0 items-center gap-2">
-          <AlertTriangle className="size-4 shrink-0" aria-hidden />
-          {/* Live region scoped to the headline only — it announces
-              when the most-urgent event changes (e.g., a new alert
-              promotes itself), without re-announcing the whole
-              expanded list every time the user toggles the
-              chevron. */}
-          <span aria-live="polite" className="truncate text-sm font-medium">
-            {event}
-          </span>
-          {expires && (
-            <span className="hidden truncate text-xs text-muted-foreground sm:inline">
-              · until {formatClockWithDay(expires, tz)}
+        <div className="flex w-full items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden />
+            {/* Live region scoped to the headline only — it announces
+                when the most-urgent event changes (e.g., a new alert
+                promotes itself), without re-announcing the whole
+                expanded list every time the user toggles the
+                chevron. */}
+            <span aria-live="polite" className="truncate text-sm font-medium">
+              {event}
             </span>
-          )}
-          {sorted.length > 1 && (
-            <span className="ml-2 shrink-0 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-              +{sorted.length - 1} more
-            </span>
-          )}
+            {expires && (
+              <span className="hidden truncate text-xs text-muted-foreground sm:inline">
+                · until {formatClockWithDay(expires, tz)}
+              </span>
+            )}
+          </div>
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground transition-transform",
+              open && "rotate-180",
+            )}
+          />
         </div>
-        <ChevronDown
-          aria-hidden
-          className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-180",
-          )}
-        />
+        {/* Secondary-alerts line for the multi-alert case. Names the
+            additional events explicitly instead of a generic "+N more"
+            pill so the user knows what's stacked behind the headline
+            without having to expand. Indented under the event name
+            (pl-6 ≈ icon size + gap-2) so the "+" reads as a
+            continuation of the primary line rather than a new
+            top-level bullet. */}
+        {sorted.length > 1 && (
+          <div className="truncate pl-6 text-xs text-muted-foreground">
+            +{" "}
+            {sorted
+              .slice(1)
+              .map((f) => f.properties.event)
+              .join(", ")}
+          </div>
+        )}
       </button>
 
       <AnimatePresence initial={false}>
@@ -149,78 +167,89 @@ export function AlertsBanner({
                 ? { duration: 0 }
                 : { type: "spring", stiffness: 280, damping: 32 }
             }
-            className="space-y-3 overflow-hidden pt-3"
+            className="overflow-hidden pt-2"
           >
-            {sorted.map((f, i) => (
-              <li key={f.id ?? i} className="space-y-1">
-                {/* Headline row: text on the left, severity chip on
-                    the right edge. Two-row layout (this row + the
-                    region/link row below) reads as a tidy table
-                    instead of a stacked action-group that pushes
-                    the area description down.
-                    Mobile chip placement: the chip flows INLINE at
-                    the end of the headline text instead of dropping
-                    to its own line. A small standalone pill stranded
-                    on its own line under a long-text headline reads
-                    as orphaned; an inline pill at the end of the
-                    text reads as a natural meta-marker. The desktop
-                    chip is rendered as a separate flex child so
-                    `justify-between` pins it to the right edge. */}
-                <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                  {/* Headline is the primary readable text — it
-                      already starts with the event name ("Air Quality
-                      Alert issued May 1 at 9:28 AM …"), so we use it
-                      verbatim and skip the standalone event-name row
-                      that would duplicate the collapsed banner's
-                      title. Falls back to `event` for the rare case
-                      where NWS omits a headline. */}
-                  <span className="min-w-0 flex-1 break-words text-sm">
-                    {f.properties.headline ?? f.properties.event}
-                    {/* Inline (mobile-only) chip — follows the headline
-                        text, wraps with it. Hidden at sm+ in favor of
-                        the right-edge instance below. */}
-                    <span className="ml-2 sm:hidden">
-                      <SeverityChip severity={f.properties.severity} />
-                    </span>
-                  </span>
-                  {/* Right-edge (desktop) chip — sits at the end of
-                      the flex row at sm+ via the parent's
-                      justify-between. Hidden on mobile. */}
-                  <span className="hidden shrink-0 sm:inline-flex">
-                    <SeverityChip severity={f.properties.severity} />
-                  </span>
-                </div>
-                {/* Region row: areaDesc on the left, "View on NWS"
-                    link inline on the right. The link's URL is
-                    constructed once at the banner level from the
-                    station's coords (`feature.id` would have been
-                    the obvious choice but it points at
-                    api.weather.gov's JSON endpoint, which renders
-                    as raw JSON in a browser — not what a user
-                    clicking "View on NWS" expects). All alerts
-                    share the same MapClick URL because they're all
-                    active for the same lat/lon; the destination
-                    page surfaces every active alert at the top
-                    plus the regular forecast for context. */}
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
-                  {f.properties.areaDesc && (
-                    <div className="min-w-0 flex-1 text-xs text-muted-foreground">
-                      {f.properties.areaDesc}
-                    </div>
+            {sorted.map((f, i) => {
+              // Per-row expiry — each alert has its own clock, so
+              // parse independently. Same guard pattern as the top
+              // alert above: NWS occasionally emits empty/truncated
+              // expires strings, and `new Date(<malformed>).getTime()`
+              // returns NaN that would render as "Invalid Date".
+              const rowExpiresMs = f.properties.expires
+                ? Date.parse(f.properties.expires)
+                : NaN;
+              const rowExpires = Number.isFinite(rowExpiresMs)
+                ? new Date(rowExpiresMs)
+                : null;
+              const meta = [
+                f.properties.areaDesc,
+                rowExpires && `until ${formatClockWithDay(rowExpires, tz)}`,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <li
+                  key={f.id ?? i}
+                  className={cn(
+                    "space-y-1 py-2",
+                    // Per-row top divider for the multi-alert case so
+                    // adjacent rows don't visually bleed into each
+                    // other against the banner's tinted bg. The first
+                    // row sits flush against the header chevron's
+                    // implicit padding; subsequent rows get an
+                    // explicit hairline.
+                    i > 0 && "border-t border-foreground/10",
                   )}
-                  <a
-                    href={nwsUrl}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground sm:ml-auto"
-                  >
-                    View on NWS
-                    <ExternalLink className="size-3" aria-hidden />
-                    <span className="sr-only"> (opens in new tab)</span>
-                  </a>
-                </div>
-              </li>
-            ))}
+                >
+                  {/* Event row: structured event name on the left,
+                      filled severity chip pinned to the right edge.
+                      We render the NWS-supplied `event` field
+                      directly — it's a short, well-formed type name
+                      ("Extreme Heat Warning", "Air Quality Alert").
+                      The verbatim `headline` field is metadata-heavy
+                      ("…issued May 10 at 12:24AM MST until May 12 at
+                      8:00PM MST by NWS Phoenix AZ") and the issuing
+                      office / timestamps are reproduced more cleanly
+                      below or available behind the NWS link. */}
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="min-w-0 flex-1 break-words text-sm font-medium">
+                      {f.properties.event}
+                    </span>
+                    <SeverityChip severity={f.properties.severity} />
+                  </div>
+                  {/* Meta row: areaDesc · until {expires} on the left,
+                      "View on NWS" link inline on the right at sm+
+                      (wraps below on mobile). The link's URL is
+                      constructed once at the banner level from the
+                      station's coords (`feature.id` would have been
+                      the obvious choice but it points at
+                      api.weather.gov's JSON endpoint, which renders
+                      as raw JSON in a browser — not what a user
+                      clicking "View on NWS" expects). All alerts
+                      share the same MapClick URL because they're all
+                      active for the same lat/lon; the destination
+                      page surfaces every active alert plus the
+                      regular forecast for context. */}
+                  <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-baseline sm:gap-3">
+                    {meta && (
+                      <span className="min-w-0 flex-1 break-words">
+                        {meta}
+                      </span>
+                    )}
+                    <a
+                      href={nwsUrl}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="inline-flex shrink-0 items-center gap-1 transition-colors hover:text-foreground sm:ml-auto"
+                    >
+                      View on NWS
+                      <ExternalLink className="size-3" aria-hidden />
+                      <span className="sr-only"> (opens in new tab)</span>
+                    </a>
+                  </div>
+                </li>
+              );
+            })}
           </motion.ul>
         )}
       </AnimatePresence>
@@ -230,38 +259,32 @@ export function AlertsBanner({
 
 /**
  * Compact severity badge that color-codes the alert by its NWS-reported
- * severity. Mirrors the banner's tone scheme so a glance lines the
- * chip up with the surrounding banner color: destructive for
- * Severe / Extreme, primary (copper) for Moderate, muted for Minor /
- * Unknown. Hidden only when severity is missing entirely (NWS does
- * sometimes omit the field for non-classified events).
+ * severity. Filled-pill style — solid token-paired bg/foreground so
+ * the chip pops cleanly off the alpha-tinted banner regardless of
+ * banner tone (the previous tinted-on-tinted approach blended the
+ * chip into the banner when both shared a hue).
  *
- * Color-cue rules:
- *   - The chip's bg + border carry the severity tier.
- *   - Text always uses `foreground` (or `muted-foreground` for the
- *     minor tier), never the raw `destructive` red — that combination
- *     bottoms out at ~3:1 against the alpha-blended chip bg, which
- *     fails WCAG AA body text (4.5:1). Foreground on these bgs lands
- *     ≥11:1 in every theme/tier.
- *   - Borders use /90 (destructive, moderate) and `foreground/50`
- *     (minor) so they clear AA's 3:1 non-text contrast against both
- *     banner tier backgrounds. The `border` token at any alpha can't
- *     reach 3:1 against the muted/destructive/primary banner bg
- *     blends — that's why the minor tier reaches for `foreground/50`.
+ *   Extreme / Severe → destructive + destructive-foreground (red,
+ *                     near-white text in light, dark text in dark)
+ *   Moderate         → primary + primary-foreground (copper)
+ *   Minor / Unknown  → muted + muted-foreground (quiet, neutral)
+ *
+ * Hidden only when severity is missing entirely (NWS does sometimes
+ * omit the field for non-classified events).
  */
 function SeverityChip({ severity }: { severity: string | undefined }) {
   if (!severity) return null;
   const lower = severity.toLowerCase();
   const tone =
     lower === "extreme" || lower === "severe"
-      ? "border-destructive/90 bg-destructive/15 text-foreground"
+      ? "bg-destructive text-destructive-foreground"
       : lower === "moderate"
-        ? "border-primary/90 bg-primary/10 text-foreground"
-        : "border-foreground/50 bg-muted/50 text-muted-foreground";
+        ? "bg-primary text-primary-foreground"
+        : "bg-muted text-muted-foreground";
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+        "inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
         tone,
       )}
     >
