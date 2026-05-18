@@ -5,7 +5,10 @@ import { addYears, subYears } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDailyAggregates } from "@/lib/hooks/useDailyAggregates";
+import {
+  useDailyAggregates,
+  type DeviceDailyAggregate,
+} from "@/lib/hooks/useDailyAggregates";
 import { useNow } from "@/lib/hooks/useNow";
 import {
   useRecentHistory,
@@ -36,7 +39,12 @@ import {
 } from "./historyClientPickers";
 import { MetricChart } from "./MetricChart";
 import { PersonalRecords } from "./PersonalRecords";
-import { buildRanges, type Range, RangePicker } from "./RangePicker";
+import {
+  buildRanges,
+  calendarMonthsBounds,
+  type Range,
+  RangePicker,
+} from "./RangePicker";
 import { WindRose } from "./WindRose";
 
 // Sample + daily-aggregate pickers live in
@@ -124,9 +132,47 @@ export function HistoryClient() {
           Math.min(Math.ceil((nowMs - range.startMs) / 86_400_000), 730),
         )
       : 365;
-  const longQuery = useDailyAggregates(dailyFetchDays, {
+  const longQuery = useDailyAggregates(dailyFetchDays, 0, {
     enabled: useDailyFetch,
   });
+
+  // Calendar compare: a SEPARATE daily-aggregate fetch for the prior
+  // 12 complete months (e.g. May 2024 → April 2025 when the current
+  // 12mo window is May 2025 → April 2026). Done as its own query —
+  // not folded into `longQuery` like long-range compare — because the
+  // single-fetch reach (today → start of compare window ≈ 745+ days)
+  // exceeds the 730-day per-window cap. The route accepts a `before`
+  // offset (mirrors /api/tempest/history) so this second fetch can
+  // target the historical window directly.
+  const calendarCompareEnabled = isCalendar && showCompare;
+  const calendarCompareBounds = React.useMemo(
+    () =>
+      range.kind === "calendar"
+        ? calendarMonthsBounds(tz, range.startMs, range.months)
+        : null,
+    [range, tz],
+  );
+  // `before` shifts the fetch's time_end back by N days. We aim
+  // time_end at `compareBounds.endMs` (== current range.startMs) so
+  // the response covers the prior 12mo window. Math.floor gives a
+  // slight over-fetch on the recent side (≤1 day) which the
+  // client-side slice trims.
+  const calendarCompareBefore =
+    calendarCompareBounds && calendarCompareEnabled
+      ? Math.max(
+          0,
+          Math.floor(
+            (nowMs - calendarCompareBounds.endMs) / 86_400_000,
+          ),
+        )
+      : 0;
+  const calendarCompareQuery = useDailyAggregates(
+    // 365 days covers any 12-month calendar window; the per-window
+    // cap (730) accommodates this without issue.
+    365,
+    calendarCompareBefore,
+    { enabled: calendarCompareEnabled },
+  );
 
   const isLoading = isShort ? shortQuery.isLoading : longQuery.isLoading;
   const error = isShort ? shortQuery.error : longQuery.error;
@@ -143,13 +189,12 @@ export function HistoryClient() {
   // see two clean arrays.
   //   - long: current = most-recent `range.days` rows; compare =
   //     `range.days` rows starting 365 days before today
-  //     ("vs same period last year").
+  //     ("vs same period last year"), sliced from the same fetch.
   //   - calendar: current = rows whose station-local day falls in
-  //     [startMs, endMs); compare = [] (12mo compare needs a wider
-  //     fetch than the 730-day cap allows without partial-month
-  //     truncation, which would undermine the whole point of the
-  //     calendar-aligned view — deferred behind a future API
-  //     extension that accepts an explicit `before` offset).
+  //     [startMs, endMs); compare = rows whose day falls in the
+  //     prior 12mo window, sliced from `calendarCompareQuery` (a
+  //     SEPARATE fetch — the combined reach exceeds the per-window
+  //     730-day cap).
   const { dailyRows, compareDailyRows } = React.useMemo(() => {
     if (range.kind === "short") {
       return { dailyRows: [], compareDailyRows: [] };
@@ -157,14 +202,32 @@ export function HistoryClient() {
     const all = longQuery.data?.aggregates ?? [];
     if (range.kind === "calendar") {
       const { startMs, endMs } = range;
-      const sliced = all.filter((row) => {
-        const ms = startOfStationDay(
-          new Date(`${row.date}T12:00:00Z`).getTime(),
-          tz,
+      const inRange = (
+        rows: DeviceDailyAggregate[],
+        lo: number,
+        hi: number,
+      ): DeviceDailyAggregate[] =>
+        rows.filter((row) => {
+          const ms = startOfStationDay(
+            new Date(`${row.date}T12:00:00Z`).getTime(),
+            tz,
+          );
+          return ms >= lo && ms < hi;
+        });
+      const sliced = inRange(all, startMs, endMs);
+      let compare: DeviceDailyAggregate[] = [];
+      if (
+        calendarCompareEnabled &&
+        calendarCompareBounds &&
+        calendarCompareQuery.data
+      ) {
+        compare = inRange(
+          calendarCompareQuery.data.aggregates,
+          calendarCompareBounds.startMs,
+          calendarCompareBounds.endMs,
         );
-        return ms >= startMs && ms < endMs;
-      });
-      return { dailyRows: sliced, compareDailyRows: [] };
+      }
+      return { dailyRows: sliced, compareDailyRows: compare };
     }
     // From here range.kind === "long" — `range.days` is safe.
     // Slice the response down to the user-facing `range.days`. For
@@ -208,7 +271,15 @@ export function HistoryClient() {
       return ms >= compareStartMs && ms < compareEndMs;
     });
     return { dailyRows: current, compareDailyRows: compare };
-  }, [longCompareEnabled, longQuery.data?.aggregates, range, tz]);
+  }, [
+    longCompareEnabled,
+    longQuery.data?.aggregates,
+    calendarCompareEnabled,
+    calendarCompareBounds,
+    calendarCompareQuery.data,
+    range,
+    tz,
+  ]);
 
   // At 24h we keep raw line charts. Anywhere ≥7d we use the
   // daily-aggregate variant — short-range aggregates client-side,
@@ -282,11 +353,13 @@ export function HistoryClient() {
   //
   // Short shift: `range.hours` (so last 7d shifts forward to overlay
   // with the current 7d).
-  // Long shift: 365 days (so last year's same-period overlays with
-  // this year).
+  // Long / calendar shift: 1 calendar year (so last year's same-period
+  // overlays with this year — works for both rolling 365d and
+  // calendar-aligned 12mo since both compare against the same window
+  // shifted exactly 12 months back).
   const compareAggregates = React.useMemo(() => {
     if (!useDaily) return null;
-    if (isLong && compareDailyRows.length > 0) {
+    if (useDailyFetch && compareDailyRows.length > 0) {
       // Shift each compare-period row's `ts` forward by exactly
       // ONE CALENDAR YEAR using `addYears`, NOT raw ms math.
       // `startOfStationDay` re-anchors to local midnight so DST
@@ -334,7 +407,7 @@ export function HistoryClient() {
     return null;
   }, [
     useDaily,
-    isLong,
+    useDailyFetch,
     isShort,
     compareDailyRows,
     compareSamples,
@@ -365,12 +438,11 @@ export function HistoryClient() {
 
   // Whether the Compare toggle is even applicable for the current
   // range. Short-range 24h doesn't make sense to compare (yesterday's
-  // diurnal cycle just sits on top); 12mo / calendar ranges don't
-  // support compare yet (would need a fetch beyond the 730-day cap or
-  // a separate query — deferred). Single source of truth used by both
+  // diurnal cycle just sits on top); long + calendar both support
+  // "vs same period last year." Single source of truth used by both
   // the toggle's render gate AND the description label.
-  const canCompare = (isShort && range.hours > 24) || isLong;
-  const compareLabel = isLong
+  const canCompare = (isShort && range.hours > 24) || useDailyFetch;
+  const compareLabel = useDailyFetch
     ? "Compare to last year"
     : "Compare to previous period";
 

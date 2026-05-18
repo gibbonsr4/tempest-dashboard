@@ -194,8 +194,7 @@ export async function resolveConfiguredStation(): Promise<{
   // feed and the obs/forecast surfaces this dashboard expects. Falling
   // back to `devices[0]` would silently bind a future multi-device
   // station to whatever happened to be first in the array — exactly
-  // the silent-fallback shape this fail-closed branch is meant to
-  // prevent.
+  // the silent-fallback shape Phase 0 was supposed to remove.
   const device = station.devices?.find((d) => d.device_type === "ST");
   if (!device) {
     throw new TempestApiError(
@@ -339,8 +338,8 @@ export async function getDeviceObservations(
 //
 // The format is documented at
 // https://community.tempest.earth/t/what-format-is-tempests-historical-data-in-api/23078/2
-// (community-sourced; cross-validated empirically against multi-year
-// station data during initial development).
+// (community-sourced; cross-validated empirically against 730 days of
+// our station's data — see scripts/probe-output/FINDINGS.md).
 //
 // Behavior verified:
 //   - Transition from `obs_st` (≤180d) to `obs_st_ext` (≥181d) is
@@ -475,7 +474,7 @@ class TempestSchemaError extends Error {
 /**
  * Parse + decode an obs_st_ext row into a typed `DeviceDailyAggregate`.
  *
- * Applies strict guardrails:
+ * Applies strict guardrails per the Codex review recommendation:
  *   - Row length must equal 34
  *   - Column 0 must be a YYYY-MM-DD date string
  *   - Triplet sanity (max ≥ avg ≥ min) for pressure / temp / humidity
@@ -553,15 +552,22 @@ function decodeExtRow(
 export async function getDeviceDailyAggregates(
   deviceId: number,
   days: number,
+  before: number = 0,
 ): Promise<{ tz: string | null; aggregates: DeviceDailyAggregate[] }> {
   if (days < 181) {
     throw new TempestSchemaError({
       reason: `getDeviceDailyAggregates requires days >= 181 to trigger obs_st_ext format; got ${days}`,
     });
   }
+  // `before` shifts the time_end window backward by N days, so a call
+  // with `days=365, before=365` returns the daily aggregates for the
+  // 365-day window that ENDED 365 days ago — the input the 12mo
+  // calendar compare-overlay path wants. Default 0 means "ending now".
+  // Mirrors the same param on /api/tempest/history.
   const now = Math.floor(Date.now() / 1000);
-  const start = now - days * 86400;
-  const path = `/observations/device/${deviceId}?time_start=${start}&time_end=${now}`;
+  const end = now - before * 86400;
+  const start = end - days * 86400;
+  const path = `/observations/device/${deviceId}?time_start=${start}&time_end=${end}`;
   const raw = await tempestFetch(path, deviceDailyObsResponse, 21600);
 
   // Top-level guardrails: type + bucket_step must match what we expect

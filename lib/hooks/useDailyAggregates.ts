@@ -26,6 +26,7 @@ import { fetchOrThrow } from "./_fetch";
 interface DailyAggregatesPayload {
   deviceId: number;
   days: number;
+  before: number;
   tz: string | null;
   count: number;
   aggregates: DeviceDailyAggregate[];
@@ -33,28 +34,35 @@ interface DailyAggregatesPayload {
 
 export type { DeviceDailyAggregate };
 
-const fetchAggregates = (days: number) =>
+const fetchAggregates = (days: number, before: number) =>
   fetchOrThrow<DailyAggregatesPayload>(
-    `/api/tempest/aggregates?days=${days}`,
+    `/api/tempest/aggregates?days=${days}&before=${before}`,
     "aggregates",
   );
 
 /**
- * Fetch up to `days` of daily-aggregate rows for the configured
- * station. `days` is clamped server-side to [181, 730].
+ * Fetch `days` of daily-aggregate rows for the configured station,
+ * with the window ending `before` days ago (default 0 = ending now).
+ * Server clamps `days` to [181, 730]; combined `before + days` capped
+ * at 2 * 730 = 1460. `before` is the same offset semantic as on
+ * /api/tempest/history — `useDailyAggregates(365, 365)` returns the
+ * daily window that ENDED 365 days ago, the input the 12mo
+ * "vs previous 12 months" compare-overlay path wants.
  *
  * Returns the response shape: aggregates array + tz_name +
  * device_id. The aggregates array is in chronological order
- * (oldest first), with the most recent row being today's partial
- * data.
+ * (oldest first); for `before=0` the most recent row is today's
+ * partial data, for `before>0` the most recent row is the final
+ * day of the historical window.
  */
 export function useDailyAggregates(
   days = 365,
+  before = 0,
   options: { enabled?: boolean } = {},
 ) {
   return useQuery({
-    queryKey: ["tempest-aggregates", days],
-    queryFn: () => fetchAggregates(days),
+    queryKey: ["tempest-aggregates", days, before],
+    queryFn: () => fetchAggregates(days, before),
     // 6 hours — matches the server-side cache TTL on the route.
     staleTime: 6 * 60 * 60 * 1000,
     enabled: options.enabled ?? true,
