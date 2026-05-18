@@ -44,7 +44,7 @@ import { useStationTz } from "@/lib/tempest/tz-context";
  * the user just sees the literal day count.
  */
 
-type Props =
+type Props = (
   | {
       kind: "samples";
       samples: HistorySample[];
@@ -63,7 +63,14 @@ type Props =
        *  semantic as `compareSamples` on the samples branch. */
       compareRows?: DeviceDailyAggregate[];
       days: number;
-    };
+    }
+) & {
+  /** Optional pre-formatted span label shown in the card's top-right
+   *  ("12 months", "365 days", "24 hours"). Overrides the
+   *  hours/days-derived default so calendar ranges read in months
+   *  even though they cover ~365 days. */
+  spanLabel?: string;
+};
 
 /**
  * Internal "best record" type — carries the metric's display value
@@ -112,14 +119,17 @@ export function PersonalRecords(props: Props) {
   const showTime = props.kind === "samples";
   const hours =
     props.kind === "samples" ? props.hours : props.days * 24;
-  // Span shown on the right of the header — hours when the window is
-  // a day or less, days otherwise. Mirrors the count display on the
-  // Wind by Month card (which says "181 days" etc.) so the two cards
-  // read as a pair when sitting side-by-side.
+  // Span shown on the right of the header. Caller passes
+  // `props.spanLabel` when it wants a specific framing (e.g. "12
+  // months" for the calendar range, which would otherwise compute
+  // as "365 days" and misalign with the date subtitle's calendar
+  // framing). Falls back to the hours/days-derived default for
+  // legacy callers and the day-or-less branch.
   const spanLabel =
-    hours <= 24
+    props.spanLabel ??
+    (hours <= 24
       ? `${Math.round(hours)} hours`
-      : `${Math.round(hours / 24)} days`;
+      : `${Math.round(hours / 24)} days`);
 
   // "Wettest sample" / "Wettest day" — same metric, different label
   // depending on what the underlying data IS. Sub-daily samples can

@@ -436,6 +436,25 @@ export function HistoryClient() {
         : 0;
   const hours = isShort ? range.hours : displayDays * 24;
 
+  // Span label shown in the top-right of the WindRose and
+  // PersonalRecords cards (e.g. "12 months", "365 days", "24 hours").
+  // Mirrors the range picker's user-facing semantic — calendar ranges
+  // read in months even when they happen to cover ~365 days, so 12mo
+  // says "12 months" rather than "365 days" which would frame the
+  // window as a rolling day-count and misalign with the calendar
+  // subtitle ("May 2025 – Apr 2026") above.
+  const spanLabel = (() => {
+    if (range.kind === "calendar") {
+      return `${range.months} months`;
+    }
+    if (range.kind === "short") {
+      return range.hours <= 24
+        ? `${Math.round(range.hours)} hours`
+        : `${Math.round(range.hours / 24)} days`;
+    }
+    return `${range.days} days`;
+  })();
+
   // Whether the Compare toggle is even applicable for the current
   // range. Short-range 24h doesn't make sense to compare (yesterday's
   // diurnal cycle just sits on top); long + calendar both support
@@ -679,6 +698,7 @@ export function HistoryClient() {
                 compareRows={
                   compareDailyRows.length > 0 ? compareDailyRows : undefined
                 }
+                spanLabel={spanLabel}
               />
               <PersonalRecords
                 kind="daily"
@@ -687,6 +707,7 @@ export function HistoryClient() {
                   compareDailyRows.length > 0 ? compareDailyRows : undefined
                 }
                 days={displayDays}
+                spanLabel={spanLabel}
               />
             </>
           ) : (
@@ -699,6 +720,7 @@ export function HistoryClient() {
                   compareSamples.length > 0 ? compareSamples : undefined
                 }
                 hours={range.kind === "short" ? range.hours : 24}
+                spanLabel={spanLabel}
               />
             </>
           )}

@@ -32,12 +32,20 @@ export type WindRoseProps =
       /** Previous-period daily aggregates — forwarded to MonthlyWindGrid
        *  to surface a "vs avg / peak" line per month tile. */
       compareRows?: DeviceDailyAggregate[];
+      /** Pre-formatted span label for the card header. Overrides the
+       *  in-grid `totalDays` derivation so calendar ranges can read
+       *  in months ("12 months") rather than days ("365 days"). */
+      spanLabel?: string;
     };
 
 export function WindRose(props: WindRoseProps) {
   if (props.kind === "daily") {
     return (
-      <MonthlyWindGrid rows={props.rows} compareRows={props.compareRows} />
+      <MonthlyWindGrid
+        rows={props.rows}
+        compareRows={props.compareRows}
+        spanLabel={props.spanLabel}
+      />
     );
   }
   return <SamplesWindRose samples={props.samples} />;

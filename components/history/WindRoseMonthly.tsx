@@ -123,12 +123,18 @@ export function computeMonthlyStats(
 export function MonthlyWindGrid({
   rows,
   compareRows,
+  spanLabel,
 }: {
   rows: DeviceDailyAggregate[];
   /** Previous-period daily aggregates (for the "vs last year" overlay
    *  on long + calendar ranges). Same monthly stats are computed and
    *  surfaced as a small "vs avg / peak" line per tile. */
   compareRows?: DeviceDailyAggregate[];
+  /** Optional pre-formatted span label shown in the card's top-right.
+   *  When present, overrides the derived `{totalDays} days` so
+   *  calendar ranges can read in months. Falls back to the day-count
+   *  derivation when omitted. */
+  spanLabel?: string;
 }) {
   const months = React.useMemo(() => computeMonthlyStats(rows), [rows]);
 
@@ -201,7 +207,7 @@ export function MonthlyWindGrid({
           </div>
         </div>
         <div className="tabular text-[11px] text-muted-foreground">
-          {totalDays.toLocaleString()} days
+          {spanLabel ?? `${totalDays.toLocaleString()} days`}
         </div>
       </div>
 
