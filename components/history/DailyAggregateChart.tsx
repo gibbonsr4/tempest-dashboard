@@ -6,6 +6,7 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
+  Customized,
   Line,
   XAxis,
   YAxis,
@@ -681,22 +682,19 @@ export function DailyAggregateChart({
                 isAnimationActive={false}
               />
             )}
-            {/* Compare bar for sum-style metrics (rain). Rendered
-                BEHIND the main bars at lower opacity so the current-
-                period totals lead while last-year's totals provide
-                visual context. Same color as the main bar so the
-                connection reads at a glance — no separate legend
-                needed. */}
+            {/* Compare overlay for sum-style metrics (rain). Rendered
+                via Recharts' <Customized> rather than a second <Bar>
+                because Recharts groups multiple <Bar> children
+                side-by-side per x-value, which would halve the
+                per-day bar width — at 365d that's <1px. Customized
+                paints raw SVG using the chart's xScale + yScale, so
+                compare ghost rects can share the SAME x slot AND
+                width as the main bars. Drawn BEFORE the main Bar
+                below so the eye reads "current bar in front, last
+                year's ghost behind" without the side-by-side
+                width-halving penalty. */}
             {variant === "sum" && compare && (
-              <Bar
-                dataKey="compareSum"
-                fill="var(--color-sum)"
-                fillOpacity={0.25}
-                stroke="var(--color-sum)"
-                strokeOpacity={0.4}
-                strokeWidth={1}
-                radius={[2, 2, 0, 0]}
-              />
+              <Customized component={RainCompareOverlay} />
             )}
             {variant === "sum" && (
               <Bar
@@ -715,3 +713,89 @@ export function DailyAggregateChart({
 // `TooltipRow` lives in `./DailyAggregateChartTooltip.tsx`. The
 // swatch-shape logic adds ~45 lines that didn't need to share scope
 // with the chart component.
+
+/**
+ * Recharts `<Customized>` payload — the chart hands us scale objects
+ * and the point array, and we paint raw SVG into the same SVG canvas
+ * as the rest of the chart. We type-loosely here because Recharts'
+ * scale objects don't have great public TS types; the runtime shape
+ * is `(value) => pixelOffset` for both axes.
+ */
+interface CustomizedProps {
+  xAxisMap?: Record<
+    string,
+    { scale: (v: number) => number; bandSize?: number }
+  >;
+  yAxisMap?: Record<string, { scale: (v: number) => number }>;
+  formattedGraphicalItems?: unknown;
+  data?: Array<{
+    ts: number;
+    sum: number | null;
+    compareSum: number | null;
+  }>;
+}
+
+/**
+ * Renders the rain-compare period as ghost bars at the SAME x slot
+ * and SAME width as the main bars (instead of as a second <Bar>
+ * which Recharts would group side-by-side, halving the per-day
+ * width). Same color as the main bars at lower fillOpacity so the
+ * connection reads at a glance; the muted stroke gives small bars
+ * visible structure at long ranges.
+ *
+ * Bar width is computed from the spacing between adjacent x-axis
+ * points × 0.9 (Recharts' default barCategoryGap is ~10%, so the
+ * 0.9 multiplier mirrors the main-bar width closely enough that the
+ * overlay sits flush, not visibly larger or smaller than the bars
+ * it's meant to back).
+ */
+function RainCompareOverlay(props: CustomizedProps) {
+  const { xAxisMap, yAxisMap, data } = props;
+  if (!xAxisMap || !yAxisMap || !data || data.length === 0) return null;
+  const xAxis = Object.values(xAxisMap)[0];
+  const yAxis = Object.values(yAxisMap)[0];
+  if (!xAxis || !yAxis) return null;
+  const xScale = xAxis.scale;
+  const yScale = yAxis.scale;
+  const baseY = yScale(0);
+
+  // Estimate per-day bar width from the x-axis spacing of the first
+  // two points. Multi-day windows always have ≥2 points; the
+  // single-point edge case (effectively impossible for a daily chart)
+  // falls back to a conservative 4px.
+  let barWidth = 4;
+  if (data.length >= 2) {
+    const p0 = xScale(data[0].ts);
+    const p1 = xScale(data[1].ts);
+    const spacing = Math.abs(p1 - p0);
+    barWidth = Math.max(1, spacing * 0.9);
+  }
+
+  return (
+    <g aria-hidden>
+      {data.map((d) => {
+        const v = d.compareSum;
+        if (v == null || !Number.isFinite(v) || v <= 0) return null;
+        const cx = xScale(d.ts);
+        const top = yScale(v);
+        const height = baseY - top;
+        if (height <= 0) return null;
+        return (
+          <rect
+            key={d.ts}
+            x={cx - barWidth / 2}
+            y={top}
+            width={barWidth}
+            height={height}
+            rx={2}
+            fill="var(--color-sum)"
+            fillOpacity={0.25}
+            stroke="var(--color-sum)"
+            strokeOpacity={0.4}
+            strokeWidth={1}
+          />
+        );
+      })}
+    </g>
+  );
+}
