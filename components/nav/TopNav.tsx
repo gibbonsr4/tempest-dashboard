@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import { Clock } from "@/components/shared/Clock";
 import { ConnectionPill } from "@/components/shared/ConnectionPill";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { WeatherIcon } from "@/components/now/WeatherIcon";
+import { useForecast } from "@/lib/hooks/useForecast";
 import { useStationMeta } from "@/lib/hooks/useStationMeta";
 
 const TABS = [
@@ -60,6 +62,16 @@ export function TopNav() {
   const pathname = usePathname();
   const meta = useStationMeta();
   const stationName = meta.data?.stationName;
+  // Live weather icon — shares the same TanStack cache as the Now
+  // tab's HeroBlock (query key `["tempest", "forecast"]`), so this
+  // doesn't issue a second request on /radar or /history. Falls
+  // back to today's forecast icon when current_conditions is missing
+  // (rare but possible during overnight WS reconnects).
+  const forecastQ = useForecast();
+  const current = forecastQ.data?.current_conditions ?? null;
+  const today = forecastQ.data?.forecast?.daily?.[0] ?? null;
+  const liveIcon = current?.icon ?? today?.icon ?? null;
+  const liveConditions = current?.conditions ?? today?.conditions ?? null;
   return (
     <header className="sticky top-0 z-30 border-b bg-background pt-[env(safe-area-inset-top)]">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:gap-4">
@@ -67,13 +79,25 @@ export function TopNav() {
           href="/"
           className="flex items-center gap-1.5 text-sm font-medium tracking-tight"
         >
-          {/* BrandMark sized larger than the title text
-              (`text-sm` ≈ 14px, mark at `size-6` = 24px) so the
-              logotype reads as a tight unit. The mark falls back
-              to "Tempest" copy when the station name hasn't loaded
-              yet (and during config-error states), so the brand
-              identifier is always visible. */}
-          <BrandMark className="size-6 text-primary" />
+          {/* Header mark sized larger than the title text (`text-sm` ≈
+              14px, mark at `size-6` = 24px) so the logotype reads as
+              a tight unit. When the forecast cache has resolved, we
+              swap the static BrandMark for the live current-conditions
+              icon (same source as the Now-tab hero icon) so the
+              header doubles as ambient at-a-glance weather. The
+              static mark stays the cold-load fallback so the brand
+              identifier is always visible before / during failed
+              fetches. The station-name span follows the same fallback
+              pattern, defaulting to "Tempest" until meta resolves. */}
+          {liveIcon ? (
+            <WeatherIcon
+              icon={liveIcon}
+              className="size-6 text-primary"
+              ariaLabel={liveConditions ?? undefined}
+            />
+          ) : (
+            <BrandMark className="size-6 text-primary" />
+          )}
           <span className="hidden sm:inline">{stationName ?? "Tempest"}</span>
         </Link>
 
