@@ -79,24 +79,28 @@ export function TopNav() {
           href="/"
           className="flex items-center gap-1.5 text-sm font-medium tracking-tight"
         >
-          {/* Header mark sized larger than the title text (`text-sm` ≈
-              14px, mark at `size-6` = 24px) so the logotype reads as
-              a tight unit. When the forecast cache has resolved, we
-              swap the static BrandMark for the live current-conditions
-              icon (same source as the Now-tab hero icon) so the
-              header doubles as ambient at-a-glance weather. The
-              static mark stays the cold-load fallback so the brand
-              identifier is always visible before / during failed
-              fetches. The station-name span follows the same fallback
-              pattern, defaulting to "Tempest" until meta resolves. */}
+          {/* Header mark sized at `size-5` (20px) — matches the
+              `text-sm` line-box height (~20px) so the icon's visual
+              mass aligns with the title's optical center across the
+              full set of Lucide weather glyphs (asymmetric ones like
+              CloudSun read top-heavy at size-6 even when the bounding
+              box is centered). When the forecast cache has resolved,
+              we swap the static BrandMark for the live
+              current-conditions icon (same source as the Now-tab hero
+              icon) so the header doubles as ambient at-a-glance
+              weather. The static mark stays the cold-load fallback
+              so the brand identifier is always visible before /
+              during failed fetches. The station-name span follows
+              the same fallback pattern, defaulting to "Tempest"
+              until meta resolves. */}
           {liveIcon ? (
             <WeatherIcon
               icon={liveIcon}
-              className="size-6 text-primary"
+              className="size-5 text-primary"
               ariaLabel={liveConditions ?? undefined}
             />
           ) : (
-            <BrandMark className="size-6 text-primary" />
+            <BrandMark className="size-5 text-primary" />
           )}
           <span className="hidden sm:inline">{stationName ?? "Tempest"}</span>
         </Link>
