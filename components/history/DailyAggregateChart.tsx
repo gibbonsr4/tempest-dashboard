@@ -696,23 +696,28 @@ export function DailyAggregateChart({
               // The mean line picks up the value-conditional gradient
               // stroke when the caller passes `gradient="temperature"`,
               // otherwise falls back to the solid color from
-              // `--color-mean`. Dots match the stroke so they read as
-              // a continuation of the line — under the gradient stroke,
-              // dots stay solid `--color-mean` rather than trying to
-              // interpolate; a 1-2px dot sampling the gradient at its
-              // own y-position would over-emphasize whichever stop it
-              // landed on without adding information.
+              // `--color-mean`. Gradient lines render WITHOUT dots —
+              // a solid-color dot puncturing the gradient at every
+              // data point breaks the cold→hot continuity, making
+              // the conditional color hard to read at 7d/30d/90d
+              // where the existing dot rules would have rendered
+              // r=1-2 markers. Non-gradient lines keep the original
+              // density-aware dot scaling (full r=2 at week scale,
+              // r=1 at quarter, none at year) since they don't have
+              // the color-continuity tradeoff.
               <Line
                 type="monotone"
                 dataKey="mean"
                 stroke={strokeRef}
                 strokeWidth={2}
                 dot={
-                  data.length > 120
+                  useGradientStroke
                     ? false
-                    : data.length > 45
-                      ? { r: 1, fill: "var(--color-mean)" }
-                      : { r: 2, fill: "var(--color-mean)" }
+                    : data.length > 120
+                      ? false
+                      : data.length > 45
+                        ? { r: 1, fill: "var(--color-mean)" }
+                        : { r: 2, fill: "var(--color-mean)" }
                 }
                 isAnimationActive={false}
               />
