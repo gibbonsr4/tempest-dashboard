@@ -6,10 +6,11 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
-  Customized,
   Line,
   XAxis,
   YAxis,
+  useXAxisScale,
+  useYAxisScale,
 } from "recharts";
 import { Card } from "@/components/ui/card";
 import {
@@ -683,18 +684,19 @@ export function DailyAggregateChart({
               />
             )}
             {/* Compare overlay for sum-style metrics (rain). Rendered
-                via Recharts' <Customized> rather than a second <Bar>
+                as a chart child (Recharts 3.x supports arbitrary
+                elements as children) rather than as a second <Bar>
                 because Recharts groups multiple <Bar> children
                 side-by-side per x-value, which would halve the
-                per-day bar width — at 365d that's <1px. Customized
-                paints raw SVG using the chart's xScale + yScale, so
-                compare ghost rects can share the SAME x slot AND
-                width as the main bars. Drawn BEFORE the main Bar
-                below so the eye reads "current bar in front, last
-                year's ghost behind" without the side-by-side
-                width-halving penalty. */}
+                per-day bar width — at 365d that's <1px. The overlay
+                uses Recharts' `useXAxisScale` / `useYAxisScale` hooks
+                to paint raw SVG at the SAME x slot AND width as the
+                main bars. Drawn BEFORE the main Bar below so the eye
+                reads "current bar in front, last year's ghost
+                behind" without the side-by-side width-halving
+                penalty. */}
             {variant === "sum" && compare && (
-              <Customized component={RainCompareOverlay} />
+              <RainCompareOverlay data={points} />
             )}
             {variant === "sum" && (
               <Bar
@@ -715,27 +717,6 @@ export function DailyAggregateChart({
 // with the chart component.
 
 /**
- * Recharts `<Customized>` payload — the chart hands us scale objects
- * and the point array, and we paint raw SVG into the same SVG canvas
- * as the rest of the chart. We type-loosely here because Recharts'
- * scale objects don't have great public TS types; the runtime shape
- * is `(value) => pixelOffset` for both axes.
- */
-interface CustomizedProps {
-  xAxisMap?: Record<
-    string,
-    { scale: (v: number) => number; bandSize?: number }
-  >;
-  yAxisMap?: Record<string, { scale: (v: number) => number }>;
-  formattedGraphicalItems?: unknown;
-  data?: Array<{
-    ts: number;
-    sum: number | null;
-    compareSum: number | null;
-  }>;
-}
-
-/**
  * Renders the rain-compare period as ghost bars at the SAME x slot
  * and SAME width as the main bars (instead of as a second <Bar>
  * which Recharts would group side-by-side, halving the per-day
@@ -743,20 +724,30 @@ interface CustomizedProps {
  * connection reads at a glance; the muted stroke gives small bars
  * visible structure at long ranges.
  *
+ * Mounted as a normal child of `<ComposedChart>` — Recharts 3.x
+ * supports arbitrary elements anywhere in the chart tree and exposes
+ * scales via hooks (`useXAxisScale` / `useYAxisScale`). The earlier
+ * `<Customized>` API was deprecated in 3.x and stopped passing
+ * `xAxisMap` / `yAxisMap` as props.
+ *
  * Bar width is computed from the spacing between adjacent x-axis
  * points × 0.9 (Recharts' default barCategoryGap is ~10%, so the
  * 0.9 multiplier mirrors the main-bar width closely enough that the
  * overlay sits flush, not visibly larger or smaller than the bars
  * it's meant to back).
  */
-function RainCompareOverlay(props: CustomizedProps) {
-  const { xAxisMap, yAxisMap, data } = props;
-  if (!xAxisMap || !yAxisMap || !data || data.length === 0) return null;
-  const xAxis = Object.values(xAxisMap)[0];
-  const yAxis = Object.values(yAxisMap)[0];
-  if (!xAxis || !yAxis) return null;
-  const xScale = xAxis.scale;
-  const yScale = yAxis.scale;
+function RainCompareOverlay({
+  data,
+}: {
+  data: Array<{
+    ts: number;
+    sum: number | null;
+    compareSum: number | null;
+  }>;
+}) {
+  const xScale = useXAxisScale();
+  const yScale = useYAxisScale();
+  if (!xScale || !yScale || data.length === 0) return null;
   const baseY = yScale(0);
 
   // Estimate per-day bar width from the x-axis spacing of the first
@@ -767,8 +758,10 @@ function RainCompareOverlay(props: CustomizedProps) {
   if (data.length >= 2) {
     const p0 = xScale(data[0].ts);
     const p1 = xScale(data[1].ts);
-    const spacing = Math.abs(p1 - p0);
-    barWidth = Math.max(1, spacing * 0.9);
+    if (p0 != null && p1 != null) {
+      const spacing = Math.abs(p1 - p0);
+      barWidth = Math.max(1, spacing * 0.9);
+    }
   }
 
   return (
@@ -778,6 +771,7 @@ function RainCompareOverlay(props: CustomizedProps) {
         if (v == null || !Number.isFinite(v) || v <= 0) return null;
         const cx = xScale(d.ts);
         const top = yScale(v);
+        if (cx == null || top == null || baseY == null) return null;
         const height = baseY - top;
         if (height <= 0) return null;
         return (
