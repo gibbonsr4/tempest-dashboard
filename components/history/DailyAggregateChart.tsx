@@ -696,29 +696,18 @@ export function DailyAggregateChart({
               // The mean line picks up the value-conditional gradient
               // stroke when the caller passes `gradient="temperature"`,
               // otherwise falls back to the solid color from
-              // `--color-mean`. Gradient lines render WITHOUT dots —
-              // a solid-color dot puncturing the gradient at every
-              // data point breaks the cold→hot continuity, making
-              // the conditional color hard to read at 7d/30d/90d
-              // where the existing dot rules would have rendered
-              // r=1-2 markers. Non-gradient lines keep the original
-              // density-aware dot scaling (full r=2 at week scale,
-              // r=1 at quarter, none at year) since they don't have
-              // the color-continuity tradeoff.
+              // `--color-mean`. Dots are always off — at year scale
+              // the density-rendering already hid them, and at
+              // week/quarter scale they cluttered the line without
+              // adding precision (the tooltip already surfaces exact
+              // values on hover). Removing them entirely keeps every
+              // chart in the History grid visually consistent.
               <Line
                 type="monotone"
                 dataKey="mean"
                 stroke={strokeRef}
                 strokeWidth={2}
-                dot={
-                  useGradientStroke
-                    ? false
-                    : data.length > 120
-                      ? false
-                      : data.length > 45
-                        ? { r: 1, fill: "var(--color-mean)" }
-                        : { r: 2, fill: "var(--color-mean)" }
-                }
+                dot={false}
                 isAnimationActive={false}
               />
             )}
@@ -740,18 +729,16 @@ export function DailyAggregateChart({
               />
             )}
             {variant === "max" && (
+              // Dots intentionally off across all ranges — matches
+              // the mean line above for visual consistency across the
+              // History grid. Tooltip carries the exact daily peak
+              // value on hover.
               <Line
                 type="monotone"
                 dataKey="max"
                 stroke="var(--color-max)"
                 strokeWidth={2}
-                dot={
-                  data.length > 120
-                    ? false
-                    : data.length > 45
-                      ? { r: 1, fill: "var(--color-max)" }
-                      : { r: 2, fill: "var(--color-max)" }
-                }
+                dot={false}
                 isAnimationActive={false}
               />
             )}
