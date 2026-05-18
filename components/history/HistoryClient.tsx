@@ -25,12 +25,16 @@ import {
 import { DailyAggregateChart } from "./DailyAggregateChart";
 import { ExpandableChart } from "./ExpandableChart";
 import {
+  dayPickDewPoint,
+  dayPickFeelsLike,
   dayPickHumidity,
   dayPickPressure,
   dayPickRain,
   dayPickTemp,
   dayPickWindAvg,
   dayPickWindGust,
+  pickDewPointF,
+  pickFeelsLikeF,
   pickGustMph,
   pickHumidity,
   pickPressureInHg,
@@ -323,7 +327,9 @@ export function HistoryClient() {
       const rain = fromDailyAggregates(dailyRows, dayPickRain, tz);
       return {
         temp: fromDailyAggregates(dailyRows, dayPickTemp, tz),
+        feelsLike: fromDailyAggregates(dailyRows, dayPickFeelsLike, tz),
         humidity: fromDailyAggregates(dailyRows, dayPickHumidity, tz),
+        dewPoint: fromDailyAggregates(dailyRows, dayPickDewPoint, tz),
         windAvg: fromDailyAggregates(dailyRows, dayPickWindAvg, tz),
         windGust: fromDailyAggregates(dailyRows, dayPickWindGust, tz),
         pressure: fromDailyAggregates(dailyRows, dayPickPressure, tz),
@@ -345,7 +351,9 @@ export function HistoryClient() {
     const rain = aggregateByDay(samples, pickRainIn, tz);
     return {
       temp: aggregateByDay(samples, pickTempF, tz),
+      feelsLike: aggregateByDay(samples, pickFeelsLikeF, tz),
       humidity: aggregateByDay(samples, pickHumidity, tz),
+      dewPoint: aggregateByDay(samples, pickDewPointF, tz),
       windAvg: aggregateByDay(samples, pickWindMph, tz),
       windGust: aggregateByDay(samples, pickGustMph, tz),
       pressure: aggregateByDay(samples, pickPressureInHg, tz),
@@ -392,8 +400,14 @@ export function HistoryClient() {
       );
       return {
         temp: shift(fromDailyAggregates(compareDailyRows, dayPickTemp, tz)),
+        feelsLike: shift(
+          fromDailyAggregates(compareDailyRows, dayPickFeelsLike, tz),
+        ),
         humidity: shift(
           fromDailyAggregates(compareDailyRows, dayPickHumidity, tz),
+        ),
+        dewPoint: shift(
+          fromDailyAggregates(compareDailyRows, dayPickDewPoint, tz),
         ),
         windAvg: shift(
           fromDailyAggregates(compareDailyRows, dayPickWindAvg, tz),
@@ -421,7 +435,9 @@ export function HistoryClient() {
       const compareRain = aggregateByDay(compareSamples, pickRainIn, tz);
       return {
         temp: shift(aggregateByDay(compareSamples, pickTempF, tz)),
+        feelsLike: shift(aggregateByDay(compareSamples, pickFeelsLikeF, tz)),
         humidity: shift(aggregateByDay(compareSamples, pickHumidity, tz)),
+        dewPoint: shift(aggregateByDay(compareSamples, pickDewPointF, tz)),
         windAvg: shift(aggregateByDay(compareSamples, pickWindMph, tz)),
         windGust: shift(aggregateByDay(compareSamples, pickGustMph, tz)),
         pressure: shift(aggregateByDay(compareSamples, pickPressureInHg, tz)),
@@ -549,11 +565,21 @@ export function HistoryClient() {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {isLoading && samples.length === 0 && dailyRows.length === 0 ? (
           <>
-            {Array.from({ length: 6 }).map((_, i) => (
+            {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-48 w-full rounded-xl" />
             ))}
           </>
         ) : useDaily && aggregates ? (
+          // Chart order is "paired story per row":
+          //   Row 1: Temperature        | Feels Like          (thermal pair)
+          //   Row 2: Humidity           | Dew Point           (moisture pair)
+          //   Row 3: Wind avg           | Wind gust           (wind pair)
+          //   Row 4: Pressure           | Rain cumulative     (atmospheric trend pair)
+          //   Row 5: Rain daily — full width                  (per-day events)
+          // Each row reads as a single question ("how hot was it
+          // and how did it feel?", "how muggy?", etc.) so the
+          // dashboard scans top-to-bottom as a sequence rather than
+          // a soup of metric cards.
           <>
             <ExpandableChart>
               <DailyAggregateChart
@@ -561,6 +587,26 @@ export function HistoryClient() {
                 compare={compareAggregates?.temp}
                 smooth={useDailyFetch ? 7 : 0}
                 label="Temperature"
+                unit="°F"
+                color="var(--chart-1)"
+                variant="range"
+                formatValue={(v) => `${Math.round(v)}`}
+              />
+            </ExpandableChart>
+            <ExpandableChart>
+              {/* Feels-like uses the same warm color family as
+                  Temperature so the row reads as a unit. Daily
+                  feels-like is computed from temp + humidity + wind
+                  (Tempest's obs_st_ext daily aggregates don't supply
+                  it natively). Range variant exposes the daily
+                  feels-like swing — heat index lifts the high above
+                  the dry-bulb max in summer, wind chill drops the
+                  low below the dry-bulb min in winter. */}
+              <DailyAggregateChart
+                data={aggregates.feelsLike}
+                compare={compareAggregates?.feelsLike}
+                smooth={useDailyFetch ? 7 : 0}
+                label="Feels like"
                 unit="°F"
                 color="var(--chart-1)"
                 variant="range"
@@ -578,6 +624,28 @@ export function HistoryClient() {
                 variant="range"
                 formatValue={(v) => `${Math.round(v)}`}
                 yDomain={[0, 100]}
+              />
+            </ExpandableChart>
+            <ExpandableChart>
+              {/* Dew point in the moisture row beside Humidity.
+                  Relative humidity is temperature-dependent (the
+                  same air mass reads as higher RH at night when
+                  it's colder); dew point is the absolute moisture
+                  metric meteorologists actually use to gauge
+                  comfort. >65°F = uncomfortable, >70°F = oppressive.
+                  Single-line mean — daily min/max from joint
+                  temp/humidity extremes would mislead because dew
+                  point is roughly stable through the diurnal
+                  cycle. */}
+              <DailyAggregateChart
+                data={aggregates.dewPoint}
+                compare={compareAggregates?.dewPoint}
+                smooth={useDailyFetch ? 7 : 0}
+                label="Dew point"
+                unit="°F"
+                color="var(--chart-2)"
+                variant="mean"
+                formatValue={(v) => `${Math.round(v)}`}
               />
             </ExpandableChart>
             <ExpandableChart>
@@ -617,12 +685,12 @@ export function HistoryClient() {
               />
             </ExpandableChart>
             <ExpandableChart>
-              {/* Cumulative rain sits in slot 6 next to Pressure so
-                  the year-over-year "are we ahead or behind on
-                  rainfall?" question has dedicated real estate, and
-                  the daily-total bars get pushed to the full-width
-                  row below where their narrow bars have room to
-                  breathe at long ranges. */}
+              {/* Cumulative rain pairs with Pressure as the
+                  "atmospheric trend" row — both are slow-moving
+                  signals that tell a seasonal story rather than a
+                  per-event one. The daily-total bars get pushed to
+                  the full-width row below where their narrow bars
+                  have room to breathe at long ranges. */}
               <DailyAggregateChart
                 data={aggregates.rainCumulative}
                 compare={compareAggregates?.rainCumulative}
@@ -665,12 +733,28 @@ export function HistoryClient() {
             </div>
           </>
         ) : (
+          // Short-range (24h) row order mirrors the daily-aggregate
+          // path above: Temp + Feels Like, Humidity + Dew Point,
+          // Wind avg + gust, Pressure + Rain. Same "paired story
+          // per row" reading discipline.
           <>
             <ExpandableChart>
               <MetricChart
                 data={samples}
                 pick={pickTempF}
                 label="Temperature"
+                unit="°F"
+                color="var(--chart-1)"
+                kind="area"
+                hours={hours}
+                formatValue={(v) => `${Math.round(v)}`}
+              />
+            </ExpandableChart>
+            <ExpandableChart>
+              <MetricChart
+                data={samples}
+                pick={pickFeelsLikeF}
+                label="Feels like"
                 unit="°F"
                 color="var(--chart-1)"
                 kind="area"
@@ -688,6 +772,17 @@ export function HistoryClient() {
                 hours={hours}
                 formatValue={(v) => `${Math.round(v)}`}
                 yDomain={[0, 100]}
+              />
+            </ExpandableChart>
+            <ExpandableChart>
+              <MetricChart
+                data={samples}
+                pick={pickDewPointF}
+                label="Dew point"
+                unit="°F"
+                color="var(--chart-2)"
+                hours={hours}
+                formatValue={(v) => `${Math.round(v)}`}
               />
             </ExpandableChart>
             <ExpandableChart>

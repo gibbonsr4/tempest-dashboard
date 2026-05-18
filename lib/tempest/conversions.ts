@@ -31,6 +31,75 @@ export function dewPointC(tempC: number, humidityPct: number): number {
   return (b * gamma) / (a - gamma);
 }
 
+/** Dew point in °F — convenience wrapper around `dewPointC` for chart
+ *  consumers that work in imperial. */
+export const dewPointF = (tempC: number, humidityPct: number): number =>
+  cToF(dewPointC(tempC, humidityPct));
+
+/**
+ * NOAA Rothfusz heat-index regression in °F. Only meaningful when
+ * tempF ≥ 80°F and humidityPct ≥ 40% (the regression was fit in that
+ * domain and degrades quickly outside it). Outside that band this
+ * returns the dry-bulb temperature unchanged so the "feels-like"
+ * caller can fall through to wind-chill or to bare temp.
+ *
+ * Source: https://www.wpc.ncep.noaa.gov/html/heatindex_equation.shtml
+ */
+export function heatIndexF(tempF: number, humidityPct: number): number {
+  if (tempF < 80 || humidityPct < 40) return tempF;
+  const T = tempF;
+  const RH = humidityPct;
+  return (
+    -42.379 +
+    2.04901523 * T +
+    10.14333127 * RH -
+    0.22475541 * T * RH -
+    6.83783e-3 * T * T -
+    5.481717e-2 * RH * RH +
+    1.22874e-3 * T * T * RH +
+    8.5282e-4 * T * RH * RH -
+    1.99e-6 * T * T * RH * RH
+  );
+}
+
+/**
+ * NWS wind-chill formula in °F. Only meaningful when tempF ≤ 50°F and
+ * windMph > 3 (below that wind speed wind chill ≈ ambient temp, and
+ * above that temp the formula's polynomial is undefined). Outside the
+ * band this returns the dry-bulb temperature unchanged.
+ *
+ * Source: https://www.weather.gov/safety/cold-wind-chill-chart
+ */
+export function windChillF(tempF: number, windMph: number): number {
+  if (tempF > 50 || windMph <= 3) return tempF;
+  const T = tempF;
+  const V = Math.pow(windMph, 0.16);
+  return 35.74 + 0.6215 * T - 35.75 * V + 0.4275 * T * V;
+}
+
+/**
+ * "Feels like" temperature in °F. Picks the appropriate adjustment
+ * for the current conditions:
+ *
+ *   - tempF ≥ 80°F and humidityPct ≥ 40%  → heat index (NOAA)
+ *   - tempF ≤ 50°F and windMph > 3        → wind chill (NWS)
+ *   - otherwise                            → dry-bulb temp unchanged
+ *
+ * Matches the convention Tempest itself uses on its forecast feed
+ * (`current_conditions.feels_like`) — we recompute locally for the
+ * History tab's daily-aggregate path, which Tempest's `obs_st_ext`
+ * response doesn't supply natively.
+ */
+export function feelsLikeF(
+  tempF: number,
+  humidityPct: number,
+  windMph: number,
+): number {
+  if (tempF >= 80 && humidityPct >= 40) return heatIndexF(tempF, humidityPct);
+  if (tempF <= 50 && windMph > 3) return windChillF(tempF, windMph);
+  return tempF;
+}
+
 /**
  * Beaufort wind-force class (0–12) for a wind speed in mph. Returns
  * the integer scale level and a descriptive name suitable for chips.
