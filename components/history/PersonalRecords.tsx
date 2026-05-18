@@ -269,8 +269,15 @@ export function PersonalRecords(props: Props) {
             <div className="mt-auto text-[10px] tabular text-muted-foreground">
               {value
                 ? showTime
-                  ? `${formatMonthDay(value.tsMs, tz)} · ${formatClock(value.tsMs, tz)}`
-                  : formatMonthDay(value.tsMs, tz)
+                  ? // Samples branch (short ranges): keep year-less
+                    // since dates are all today/recent and the clock
+                    // already disambiguates within the day.
+                    `${formatMonthDay(value.tsMs, tz)} · ${formatClock(value.tsMs, tz)}`
+                  : // Daily branch (long + calendar): include year so
+                    // the current-period date pairs cleanly with the
+                    // compare-line year ("Jul 9, 2025" / "vs 114 ·
+                    // Jul 5, 2024").
+                    formatMonthDayYear(value.tsMs, tz)
                 : "no data"}
             </div>
             {/* Compare line: rendered ONLY when the parent passed
