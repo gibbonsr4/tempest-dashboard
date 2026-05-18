@@ -590,6 +590,7 @@ export function HistoryClient() {
                 unit="°F"
                 color="var(--chart-1)"
                 variant="range"
+                gradient="temperature"
                 formatValue={(v) => `${Math.round(v)}`}
               />
             </ExpandableChart>
@@ -610,6 +611,7 @@ export function HistoryClient() {
                 unit="°F"
                 color="var(--chart-1)"
                 variant="range"
+                gradient="temperature"
                 formatValue={(v) => `${Math.round(v)}`}
               />
             </ExpandableChart>
@@ -747,6 +749,7 @@ export function HistoryClient() {
                 color="var(--chart-1)"
                 kind="area"
                 hours={hours}
+                gradient="temperature"
                 formatValue={(v) => `${Math.round(v)}`}
               />
             </ExpandableChart>
@@ -759,6 +762,7 @@ export function HistoryClient() {
                 color="var(--chart-1)"
                 kind="area"
                 hours={hours}
+                gradient="temperature"
                 formatValue={(v) => `${Math.round(v)}`}
               />
             </ExpandableChart>

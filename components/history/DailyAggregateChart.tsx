@@ -20,6 +20,10 @@ import {
 } from "@/components/ui/chart";
 import { formatMonthDay } from "@/lib/tempest/format";
 import { useStationTz } from "@/lib/tempest/tz-context";
+import {
+  tempGradientStops,
+  type GradientStop,
+} from "@/lib/tempest/chartGradient";
 import { smoothDailyAggregates, type DailyAggregate } from "./aggregate";
 import { TooltipRow } from "./DailyAggregateChartTooltip";
 
@@ -56,6 +60,7 @@ export function DailyAggregateChart({
   className,
   chartHeight = "h-40",
   hideLabel = false,
+  gradient,
 }: {
   /**
    * Raw daily aggregates. Smoothing (if any) is applied internally
@@ -112,8 +117,23 @@ export function DailyAggregateChart({
    * otherwise duplicate the label inside the dialog.
    */
   hideLabel?: boolean;
+  /**
+   * Optional value-conditional gradient applied to the rendered line.
+   * Currently only "temperature" is supported, which maps the same
+   * 6-stop `--temp-cold` → `--temp-extreme` palette the Now tab uses
+   * onto the chart's visible y-domain. Stops are computed from the
+   * data's actual min/max via `tempGradientStops`, so the same °F
+   * value reads the same color across charts and across tabs.
+   *
+   * Skipped silently for variants where it doesn't apply (sum,
+   * cumulative — those don't have a line stroke that benefits from
+   * a thermal gradient).
+   */
+  gradient?: "temperature";
 }) {
   const tz = useStationTz();
+  const reactId = React.useId().replace(/:/g, "");
+  const gradientId = `daily-gradient-${reactId}`;
 
   // Smoothing applied internally so the chart's API is just "raw
   // data in, optionally tell me how much to smooth." Sum-style
@@ -226,6 +246,25 @@ export function DailyAggregateChart({
     () => (compare && compare.length > 0 ? computeSummary(compare) : null),
     [computeSummary, compare],
   );
+
+  // Gradient stops keyed to the chart's visible y-domain. Computed
+  // from the summary (raw min/max) since smoothing only affects the
+  // line shape, not the temperature range it spans. Includes a
+  // small padding match Recharts' auto-domain heuristic so the
+  // top/bottom stops align with the rendered line's extremes.
+  // Empty list when no gradient requested or summary unavailable —
+  // the chart then renders with the default solid stroke.
+  const gradientStops = React.useMemo<GradientStop[]>(() => {
+    if (!gradient || !summary) return [];
+    if (gradient === "temperature") {
+      return tempGradientStops(summary.min, summary.max);
+    }
+    return [];
+  }, [gradient, summary]);
+  const useGradientStroke = gradientStops.length > 0;
+  const strokeRef = useGradientStroke
+    ? `url(#${gradientId})`
+    : "var(--color-mean)";
 
   const config = {
     range: { label: `${label} range`, color },
@@ -360,6 +399,25 @@ export function DailyAggregateChart({
             margin={{ top: 4, right: 4, bottom: 0, left: 4 }}
             accessibilityLayer
           >
+            {useGradientStroke && (
+              <defs>
+                <linearGradient
+                  id={gradientId}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  {gradientStops.map((s, i) => (
+                    <stop
+                      key={`${i}-${s.offset}`}
+                      offset={`${(s.offset * 100).toFixed(2)}%`}
+                      stopColor={s.color}
+                    />
+                  ))}
+                </linearGradient>
+              </defs>
+            )}
             <CartesianGrid
               vertical={false}
               stroke="var(--color-border)"
@@ -635,10 +693,19 @@ export function DailyAggregateChart({
                 Computed once per render, not inside the dot renderer
                 callback, so it doesn't churn on hover events. */}
             {(variant === "range" || variant === "mean") && (
+              // The mean line picks up the value-conditional gradient
+              // stroke when the caller passes `gradient="temperature"`,
+              // otherwise falls back to the solid color from
+              // `--color-mean`. Dots match the stroke so they read as
+              // a continuation of the line — under the gradient stroke,
+              // dots stay solid `--color-mean` rather than trying to
+              // interpolate; a 1-2px dot sampling the gradient at its
+              // own y-position would over-emphasize whichever stop it
+              // landed on without adding information.
               <Line
                 type="monotone"
                 dataKey="mean"
-                stroke="var(--color-mean)"
+                stroke={strokeRef}
                 strokeWidth={2}
                 dot={
                   data.length > 120

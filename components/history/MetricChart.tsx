@@ -21,6 +21,10 @@ import { Card } from "@/components/ui/card";
 import type { HistorySample } from "@/lib/hooks/useRecentHistory";
 import { formatClock, formatMonthDay } from "@/lib/tempest/format";
 import { useStationTz } from "@/lib/tempest/tz-context";
+import {
+  tempGradientStops,
+  type GradientStop,
+} from "@/lib/tempest/chartGradient";
 
 /**
  * Generic time-series chart for a single metric over a configurable
@@ -45,6 +49,7 @@ export function MetricChart({
   className,
   chartHeight = "h-40",
   hideLabel = false,
+  gradient,
 }: {
   data: HistorySample[];
   pick: (s: HistorySample) => number | null;
@@ -71,12 +76,23 @@ export function MetricChart({
    * `DialogTitle` and would otherwise duplicate the label inside.
    */
   hideLabel?: boolean;
+  /**
+   * Optional value-conditional stroke gradient. Currently only
+   * "temperature" is supported — applies the same 6-stop
+   * `--temp-cold` → `--temp-extreme` palette the Now-tab hourly
+   * forecast uses, mapped to the chart's visible y-domain via
+   * `tempGradientStops`. The fill gradient stays as-is (single-color
+   * translucent wash) so the line vs band reading stays clean.
+   */
+  gradient?: "temperature";
 }) {
   const tz = useStationTz();
-  // Per-instance gradient id so two area-kind charts on the same page
-  // don't collide on `<defs>` references.
-  const reactId = React.useId();
+  // Per-instance gradient ids so two area-kind charts on the same page
+  // don't collide on `<defs>` references (B10). `:`s are stripped from
+  // useId because they're invalid in SVG fragment identifiers.
+  const reactId = React.useId().replace(/:/g, "");
   const gradientId = `metric-area-${reactId}`;
+  const strokeGradientId = `metric-stroke-${reactId}`;
 
   // Keep null entries in the series — Recharts renders gaps at nulls
   // when `connectNulls` is unset, which is what we want for outage
@@ -108,6 +124,22 @@ export function MetricChart({
     if (count === 0) return null;
     return { min, max, avg: sum / count };
   }, [points]);
+
+  // Value-conditional stroke gradient stops keyed to the visible
+  // y-domain (the data's actual min/max). Empty when no gradient
+  // requested or summary unavailable; the chart then renders with
+  // the default solid `--color-value` stroke.
+  const gradientStops = React.useMemo<GradientStop[]>(() => {
+    if (!gradient || !summary) return [];
+    if (gradient === "temperature") {
+      return tempGradientStops(summary.min, summary.max);
+    }
+    return [];
+  }, [gradient, summary]);
+  const useGradientStroke = gradientStops.length > 0;
+  const strokeRef = useGradientStroke
+    ? `url(#${strokeGradientId})`
+    : "var(--color-value)";
 
   const useDayLabels = hours > 36;
 
@@ -179,6 +211,10 @@ export function MetricChart({
             fmtTooltipLabel,
             formatValue,
             gradientId,
+            strokeGradientId,
+            gradientStops,
+            useGradientStroke,
+            strokeRef,
             yDomain,
             label,
             color,
@@ -197,6 +233,10 @@ function renderChart({
   fmtTooltipLabel,
   formatValue,
   gradientId,
+  strokeGradientId,
+  gradientStops,
+  useGradientStroke,
+  strokeRef,
   yDomain,
   label,
   color,
@@ -208,6 +248,18 @@ function renderChart({
   fmtTooltipLabel: (raw: unknown) => string;
   formatValue: (v: number) => string;
   gradientId: string;
+  /** SVG fragment id for the value-conditional stroke gradient (e.g.
+   *  temperature palette). Same id is referenced by the Area stroke
+   *  when `useGradientStroke` is true. */
+  strokeGradientId: string;
+  /** Computed gradient stops from `tempGradientStops` (or analogous
+   *  helpers). Empty when no gradient was requested — the chart
+   *  falls back to the solid `--color-value` stroke in that case. */
+  gradientStops: GradientStop[];
+  useGradientStroke: boolean;
+  /** Pre-resolved stroke value — either `url(#id)` referencing the
+   *  conditional gradient or the solid `--color-value` token. */
+  strokeRef: string;
   yDomain?: [number | "auto", number | "auto"];
   label: string;
   color: string;
@@ -301,6 +353,29 @@ function renderChart({
             <stop offset="0%" stopColor="var(--color-value)" stopOpacity={0.4} />
             <stop offset="100%" stopColor="var(--color-value)" stopOpacity={0} />
           </linearGradient>
+          {/* Value-conditional stroke gradient (e.g. temperature
+              palette). Rendered when `gradient` prop is set so the
+              stroke shifts cold-blue → hot-red as it climbs the
+              y-axis, matching the Now-tab hourly strip. The fill
+              gradient above stays neutral so the band reads as one
+              tone with the conditional color living in the line. */}
+          {useGradientStroke && (
+            <linearGradient
+              id={strokeGradientId}
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              {gradientStops.map((s, i) => (
+                <stop
+                  key={`${i}-${s.offset}`}
+                  offset={`${(s.offset * 100).toFixed(2)}%`}
+                  stopColor={s.color}
+                />
+              ))}
+            </linearGradient>
+          )}
         </defs>
         {grid}
         {xAxis}
@@ -309,7 +384,7 @@ function renderChart({
         <Area
           dataKey="value"
           type="monotone"
-          stroke="var(--color-value)"
+          stroke={strokeRef}
           strokeWidth={2}
           fill={`url(#${gradientId})`}
           dot={false}
