@@ -45,8 +45,25 @@ import { useStationTz } from "@/lib/tempest/tz-context";
  */
 
 type Props =
-  | { kind: "samples"; samples: HistorySample[]; hours: number }
-  | { kind: "daily"; rows: DeviceDailyAggregate[]; days: number };
+  | {
+      kind: "samples";
+      samples: HistorySample[];
+      /** Previous-period samples (for the "vs previous period" overlay
+       *  on short ranges >24h). When present, each tile renders an
+       *  extra "vs N · Mmm DD" line under the date showing the same
+       *  metric's record from the compare window. */
+      compareSamples?: HistorySample[];
+      hours: number;
+    }
+  | {
+      kind: "daily";
+      rows: DeviceDailyAggregate[];
+      /** Previous-period daily aggregates (for the "vs last year"
+       *  overlay on long + calendar ranges). Same compare-line
+       *  semantic as `compareSamples` on the samples branch. */
+      compareRows?: DeviceDailyAggregate[];
+      days: number;
+    };
 
 /**
  * Internal "best record" type — carries the metric's display value
@@ -78,6 +95,20 @@ export function PersonalRecords(props: Props) {
     return computeFromDaily(props.rows, tz);
   }, [props, tz]);
 
+  // Compare records: same compute on the previous-period data. Null
+  // when compare isn't active (the prop is absent or empty), which
+  // collapses the "vs N · Mmm DD" line out of the render below.
+  const compareRecords = React.useMemo<RecordSet | null>(() => {
+    if (props.kind === "samples") {
+      return props.compareSamples && props.compareSamples.length > 0
+        ? computeFromSamples(props.compareSamples)
+        : null;
+    }
+    return props.compareRows && props.compareRows.length > 0
+      ? computeFromDaily(props.compareRows, tz)
+      : null;
+  }, [props, tz]);
+
   const showTime = props.kind === "samples";
   const hours =
     props.kind === "samples" ? props.hours : props.days * 24;
@@ -105,6 +136,7 @@ export function PersonalRecords(props: Props) {
     icon: LucideIcon;
     color: string;
     value: RecordItem | null;
+    compareValue: RecordItem | null;
     format: (v: number) => string;
     unit?: string;
   }[] = [
@@ -113,6 +145,7 @@ export function PersonalRecords(props: Props) {
       icon: Flame,
       color: "var(--icon-flame)",
       value: records.hottest,
+      compareValue: compareRecords?.hottest ?? null,
       format: (v) => `${Math.round(v)}`,
       unit: "°F",
     },
@@ -121,6 +154,7 @@ export function PersonalRecords(props: Props) {
       icon: Snowflake,
       color: "var(--icon-cold)",
       value: records.coldest,
+      compareValue: compareRecords?.coldest ?? null,
       format: (v) => `${Math.round(v)}`,
       unit: "°F",
     },
@@ -129,6 +163,7 @@ export function PersonalRecords(props: Props) {
       icon: Wind,
       color: "var(--primary)",
       value: records.biggestGust,
+      compareValue: compareRecords?.biggestGust ?? null,
       format: (v) => v.toFixed(1),
       unit: "mph",
     },
@@ -137,6 +172,7 @@ export function PersonalRecords(props: Props) {
       icon: Droplets,
       color: "var(--icon-rain)",
       value: records.wettest,
+      compareValue: compareRecords?.wettest ?? null,
       format: (v) => v.toFixed(2),
       unit: "in",
     },
@@ -145,6 +181,7 @@ export function PersonalRecords(props: Props) {
       icon: Sun,
       color: "var(--icon-sun)",
       value: records.highestUv,
+      compareValue: compareRecords?.highestUv ?? null,
       format: (v) => v.toFixed(1),
     },
     {
@@ -152,6 +189,7 @@ export function PersonalRecords(props: Props) {
       icon: Gauge,
       color: "var(--icon-pressure)",
       value: records.highestPressure,
+      compareValue: compareRecords?.highestPressure ?? null,
       format: (v) => v.toFixed(2),
       unit: "inHg",
     },
@@ -186,7 +224,7 @@ export function PersonalRecords(props: Props) {
           ranges (181d, 365d, etc.) instead of one card filling and
           the other leaving empty space. */}
       <ul className="grid flex-1 auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3">
-        {items.map(({ label, icon: Icon, color, value, format, unit }) => (
+        {items.map(({ label, icon: Icon, color, value, compareValue, format, unit }) => (
           // Same layout strategy as `<MetricTile />` on the Now tab:
           // label + value stay TIGHT at the top (they form a
           // "category + achievement" pair — e.g. "HOT 105°F" — and
@@ -220,6 +258,19 @@ export function PersonalRecords(props: Props) {
                   : formatMonthDay(value.tsMs, tz)
                 : "no data"}
             </div>
+            {/* Compare line: rendered ONLY when the parent passed
+                `compareSamples`/`compareRows` AND the compare period
+                had data for this metric. The "vs N · Mmm DD" format
+                stays compact (≤ ~14 chars) so it fits the narrow
+                tile widths at 3 cols (sm+) without wrap. Inherits
+                `text-muted-foreground` from the tile container — same
+                AA-safe contrast pair as the date line above. */}
+            {compareValue && (
+              <div className="text-[10px] tabular text-muted-foreground">
+                vs {format(compareValue.displayValue)} ·{" "}
+                {formatMonthDay(compareValue.tsMs, tz)}
+              </div>
+            )}
           </li>
         ))}
       </ul>

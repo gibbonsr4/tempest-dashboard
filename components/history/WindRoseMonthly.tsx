@@ -16,10 +16,9 @@ import { DIR_BINS } from "./WindRose";
  *
  * Why monthly instead of a Beaufort-banded annual rose? At year
  * scale the daily-mean speed collapses most days into the "calm"
- * band, which conveys nothing. The seasonal shift in prevailing
- * direction (whatever's locally meaningful — monsoon onset, frontal
- * tracks, sea-breeze regimes, etc.) is the more useful signal at
- * this range.
+ * band, which conveys nothing. The seasonal regime shift (monsoon
+ * onset, winter NW track, sea-breeze season) is the more useful
+ * signal at this range.
  *
  * The 3 × 4 grid (or 6 × 2 at lg+ via dynamic `--lg-cols`) keeps the
  * card's height matched to the adjacent Personal Records card on
@@ -121,8 +120,33 @@ export function computeMonthlyStats(
     });
 }
 
-export function MonthlyWindGrid({ rows }: { rows: DeviceDailyAggregate[] }) {
+export function MonthlyWindGrid({
+  rows,
+  compareRows,
+}: {
+  rows: DeviceDailyAggregate[];
+  /** Previous-period daily aggregates (for the "vs last year" overlay
+   *  on long + calendar ranges). Same monthly stats are computed and
+   *  surfaced as a small "vs avg / peak" line per tile. */
+  compareRows?: DeviceDailyAggregate[];
+}) {
   const months = React.useMemo(() => computeMonthlyStats(rows), [rows]);
+
+  // Compare months keyed by their CURRENT-YEAR equivalent (e.g. data
+  // from 2024-05 is stored under "2025-05" so the lookup `compareByCurrentKey.get(m.key)`
+  // works when iterating current-period months). Empty map when
+  // compare is off — collapses the "vs" line out of the tile.
+  const compareByCurrentKey = React.useMemo(() => {
+    const map = new Map<string, MonthStats>();
+    if (!compareRows || compareRows.length === 0) return map;
+    const compareMonths = computeMonthlyStats(compareRows);
+    for (const m of compareMonths) {
+      const [yStr, mm] = m.key.split("-");
+      const shiftedKey = `${Number(yStr) + 1}-${mm}`;
+      map.set(shiftedKey, m);
+    }
+    return map;
+  }, [compareRows]);
 
   const totalDays = React.useMemo(
     () => months.reduce((s, m) => s + m.days, 0),
@@ -190,7 +214,14 @@ export function MonthlyWindGrid({ rows }: { rows: DeviceDailyAggregate[] }) {
           const showYear =
             spansMultipleYears &&
             (prevKey === null || prevKey.slice(0, 4) !== m.key.slice(0, 4));
-          return <MonthCell key={m.key} stats={m} showYear={showYear} />;
+          return (
+            <MonthCell
+              key={m.key}
+              stats={m}
+              compareStats={compareByCurrentKey.get(m.key) ?? null}
+              showYear={showYear}
+            />
+          );
         })}
       </div>
     </Card>
@@ -199,10 +230,14 @@ export function MonthlyWindGrid({ rows }: { rows: DeviceDailyAggregate[] }) {
 
 interface MonthCellProps {
   stats: MonthStats;
+  /** Same-month-of-prior-year stats (for the "vs last year" overlay).
+   *  Null when compare is off OR the prior period has no data for
+   *  this calendar month — both cases hide the "vs" line. */
+  compareStats: MonthStats | null;
   showYear: boolean;
 }
 
-function MonthCell({ stats, showYear }: MonthCellProps) {
+function MonthCell({ stats, compareStats, showYear }: MonthCellProps) {
   // Stable mid-month UTC date for the month-name label. UTC is fine
   // here because we only need the month name, and "-15" is far enough
   // from month edges that no station tz could shift it.
@@ -216,9 +251,16 @@ function MonthCell({ stats, showYear }: MonthCellProps) {
 
   const avgText = stats.avgMph != null ? stats.avgMph.toFixed(1) : "—";
   const gustText = stats.gustMph != null ? stats.gustMph.toFixed(0) : "—";
-  const ariaLabel = stats.prevailingDir
-    ? `${monthLabel}: prevailing ${stats.prevailingDir}, avg ${avgText} mph, peak gust ${gustText} mph, ${stats.days} days`
-    : `${monthLabel}: no wind data`;
+  const compareAvgText =
+    compareStats?.avgMph != null ? compareStats.avgMph.toFixed(1) : "—";
+  const compareGustText =
+    compareStats?.gustMph != null ? compareStats.gustMph.toFixed(0) : "—";
+  const ariaLabel = (() => {
+    if (!stats.prevailingDir) return `${monthLabel}: no wind data`;
+    const base = `${monthLabel}: prevailing ${stats.prevailingDir}, avg ${avgText} mph, peak gust ${gustText} mph, ${stats.days} days`;
+    if (!compareStats) return base;
+    return `${base}, vs prior year avg ${compareAvgText} mph, peak gust ${compareGustText} mph`;
+  })();
 
   return (
     <div
@@ -241,6 +283,20 @@ function MonthCell({ stats, showYear }: MonthCellProps) {
         <span className="mx-0.5 text-muted-foreground/60">/</span>
         <span className="text-foreground/85">{gustText}</span>
       </div>
+      {/* Compare line — same calendar month one year earlier. Skips
+          the prevailing-direction overlay (a second arrow per tile
+          gets visually loud and direction is the noisiest metric
+          year-over-year anyway); the avg / peak-gust pair carries
+          the meaningful comparison. Inherits the tile's already-AA
+          `text-muted-foreground` weight at the same 10px size so the
+          two lines read as primary + secondary, not equal. */}
+      {compareStats && (
+        <div className="text-[10px] tabular leading-tight text-muted-foreground">
+          vs {compareAvgText}
+          <span className="mx-0.5 text-muted-foreground/60">/</span>
+          {compareGustText}
+        </div>
+      )}
     </div>
   );
 }

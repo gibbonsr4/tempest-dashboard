@@ -673,10 +673,19 @@ export function HistoryClient() {
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {useDailyFetch ? (
             <>
-              <WindRose kind="daily" rows={dailyRows} />
+              <WindRose
+                kind="daily"
+                rows={dailyRows}
+                compareRows={
+                  compareDailyRows.length > 0 ? compareDailyRows : undefined
+                }
+              />
               <PersonalRecords
                 kind="daily"
                 rows={dailyRows}
+                compareRows={
+                  compareDailyRows.length > 0 ? compareDailyRows : undefined
+                }
                 days={displayDays}
               />
             </>
@@ -686,6 +695,9 @@ export function HistoryClient() {
               <PersonalRecords
                 kind="samples"
                 samples={samples}
+                compareSamples={
+                  compareSamples.length > 0 ? compareSamples : undefined
+                }
                 hours={range.kind === "short" ? range.hours : 24}
               />
             </>

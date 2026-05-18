@@ -26,11 +26,19 @@ export const DIR_BINS = 16;
 
 export type WindRoseProps =
   | { kind: "samples"; samples: HistorySample[] }
-  | { kind: "daily"; rows: DeviceDailyAggregate[] };
+  | {
+      kind: "daily";
+      rows: DeviceDailyAggregate[];
+      /** Previous-period daily aggregates — forwarded to MonthlyWindGrid
+       *  to surface a "vs avg / peak" line per month tile. */
+      compareRows?: DeviceDailyAggregate[];
+    };
 
 export function WindRose(props: WindRoseProps) {
   if (props.kind === "daily") {
-    return <MonthlyWindGrid rows={props.rows} />;
+    return (
+      <MonthlyWindGrid rows={props.rows} compareRows={props.compareRows} />
+    );
   }
   return <SamplesWindRose samples={props.samples} />;
 }

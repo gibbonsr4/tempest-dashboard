@@ -146,42 +146,63 @@ export function DailyAggregateChart({
     });
   }, [smoothedData, smoothedCompare]);
 
-  const summary = React.useMemo(() => {
-    // Always compute the header summary from RAW data, never from
-    // smoothed. Smoothing compresses peaks slightly, so a 1y temp
-    // chart's smoothed line might bottom at ~42°F when the actual
-    // annual minimum was 36°F. The header should reflect reality.
-    if (data.length === 0) return null;
-    let min = Infinity;
-    let max = -Infinity;
-    let sum = 0;
-    let count = 0;
-    for (const p of data) {
-      const v =
-        variant === "sum"
-          ? p.sum
-          : variant === "max"
-            ? p.max
-            : p.mean;
-      if (v == null || !Number.isFinite(v)) continue;
-      if (variant === "range") {
-        if (p.min != null && p.min < min) min = p.min;
-        if (p.max != null && p.max > max) max = p.max;
-      } else {
-        if (v < min) min = v;
-        if (v > max) max = v;
+  // Single-pass min/avg/max/total over a DailyAggregate[]. Extracted
+  // so the same logic produces both the current-period summary and
+  // the optional compare-period summary shown alongside in the header
+  // when "Compare to last year" is on. Same variant-aware picks
+  // (range, max, mean, sum) as the chart line itself.
+  const computeSummary = React.useCallback(
+    (rows: DailyAggregate[]) => {
+      if (rows.length === 0) return null;
+      let min = Infinity;
+      let max = -Infinity;
+      let sum = 0;
+      let count = 0;
+      for (const p of rows) {
+        const v =
+          variant === "sum"
+            ? p.sum
+            : variant === "max"
+              ? p.max
+              : p.mean;
+        if (v == null || !Number.isFinite(v)) continue;
+        if (variant === "range") {
+          if (p.min != null && p.min < min) min = p.min;
+          if (p.max != null && p.max > max) max = p.max;
+        } else {
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+        sum += v;
+        count += 1;
       }
-      sum += v;
-      count += 1;
-    }
-    if (count === 0) return null;
-    // `total` is the raw sum of contributing values — meaningful for
-    // accumulations (rain) under variant="sum". Crucially we do NOT
-    // reconstruct it as `avg * points.length`; that compounded the
-    // count×days mismatch when the input had outage days, inflating
-    // displayed totals (B2-client).
-    return { min, max, avg: sum / count, total: sum };
-  }, [data, variant]);
+      if (count === 0) return null;
+      return { min, max, avg: sum / count, total: sum };
+    },
+    [variant],
+  );
+
+  // Always compute the header summary from RAW data, never from
+  // smoothed. Smoothing compresses peaks slightly, so a 1y temp
+  // chart's smoothed line might bottom at ~42°F when the actual
+  // annual minimum was 36°F. The header should reflect reality.
+  // `total` (variant="sum") is the raw sum of contributing values —
+  // meaningful for accumulations (rain). Crucially we do NOT
+  // reconstruct it as `avg * points.length`; that compounded the
+  // count×days mismatch when the input had outage days, inflating
+  // displayed totals (B2-client).
+  const summary = React.useMemo(
+    () => computeSummary(data),
+    [computeSummary, data],
+  );
+  // Compare-period summary, shown next to each current-period stat as
+  // "/ N" in muted text when the compare overlay is on. Falls back to
+  // null when compare is missing or empty, which collapses the
+  // "/ N" segments out of the render below.
+  const compareSummary = React.useMemo(
+    () => (compare && compare.length > 0 ? computeSummary(compare) : null),
+    [computeSummary, compare],
+  );
 
   const config = {
     range: { label: `${label} range`, color },
@@ -234,28 +255,48 @@ export function DailyAggregateChart({
           )}
         </div>
         {summary && (
-          <div className="flex gap-3 text-[11px] text-muted-foreground tabular">
-            <span>
+          // Compare values render inline as " / N" after each current
+          // value. They inherit the parent `text-muted-foreground`
+          // (same color as the "min" / "avg" / "max" labels — already
+          // a known-good AA contrast pair against the card bg), with
+          // the current value in `text-foreground` carrying the
+          // visual hierarchy. The " / " is in the same muted color so
+          // the eye reads "<bold current> [muted vs] <muted prior>".
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground tabular">
+            <span className="whitespace-nowrap">
               min{" "}
               <span className="text-foreground">
                 {formatValue(summary.min)}
               </span>
+              {compareSummary && <> / {formatValue(compareSummary.min)}</>}
             </span>
-            <span>
+            <span className="whitespace-nowrap">
               {variant === "sum" ? "total" : "avg"}{" "}
               <span className="text-foreground">
                 {formatValue(
                   variant === "sum" ? summary.total : summary.avg,
                 )}
               </span>
+              {compareSummary && (
+                <>
+                  {" "}
+                  /{" "}
+                  {formatValue(
+                    variant === "sum"
+                      ? compareSummary.total
+                      : compareSummary.avg,
+                  )}
+                </>
+              )}
             </span>
-            <span>
+            <span className="whitespace-nowrap">
               max{" "}
               <span className="text-foreground">
                 {formatValue(summary.max)}
               </span>
+              {compareSummary && <> / {formatValue(compareSummary.max)}</>}
             </span>
-            <span className="text-[10px] normal-case tracking-normal">
+            <span className="whitespace-nowrap text-[10px] normal-case tracking-normal">
               {unit}
             </span>
           </div>
