@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { addYears, subYears } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDailyAggregates } from "@/lib/hooks/useDailyAggregates";
@@ -84,31 +85,47 @@ export function HistoryClient() {
   // hook count between renders — the disabled one returns nothing.
   const isShort = range.kind === "short";
   const isLong = range.kind === "long";
+  const isCalendar = range.kind === "calendar";
+  // Both long and calendar pull from the daily-aggregate endpoint —
+  // they only differ in how the response is sliced. `useDailyFetch`
+  // captures that shared family so the fetch / loading / error wiring
+  // doesn't branch three ways.
+  const useDailyFetch = isLong || isCalendar;
   const shortQuery = useRecentHistory(isShort ? range.hours : 24, 0, {
     enabled: isShort,
   });
 
-  // Long-range fetch: when compare is enabled we need ~365 EXTRA days
-  // to cover the prior-year window. Bounds:
+  // Daily-aggregate fetch: serves both long (rolling N days) and
+  // calendar (sliced to month boundaries). Bounds:
   //   - LOWER: 181 days, the minimum the daily-aggregate endpoint
   //     accepts (Tempest only returns the obs_st_ext format for
   //     windows ≥181 days). Critical for the 90d range and for
   //     early-year YTD; without this floor the API rejects the
   //     request with a 400.
   //   - UPPER: 730 days (the endpoint max), enough for any of our
-  //     90d / YTD / 1y ranges + a full year of comparison data.
-  // We always slice the response back down to `range.days` for
-  // display (see `dailyRows` below), so over-requesting at the
-  // small end is invisible to the user.
+  //     90d / YTD / 365d ranges + a full year of comparison data,
+  //     and for the 12mo calendar window (which reaches back ~13
+  //     months from today depending on day-of-month).
+  // For long: when compare is enabled we need ~365 EXTRA days to
+  // cover the prior-year overlay window.
+  // For calendar: we fetch back from NOW to `range.startMs`, then
+  // slice to [startMs, endMs) below — the over-fetch (days between
+  // endMs and now, i.e. the in-progress current month) is invisible
+  // to the user.
   const longCompareEnabled = isLong && showCompare;
-  const longFetchDays = isLong
+  const dailyFetchDays = isLong
     ? Math.max(
         181,
         Math.min(range.days + (longCompareEnabled ? 365 : 0), 730),
       )
-    : 365;
-  const longQuery = useDailyAggregates(longFetchDays, {
-    enabled: isLong,
+    : isCalendar
+      ? Math.max(
+          181,
+          Math.min(Math.ceil((nowMs - range.startMs) / 86_400_000), 730),
+        )
+      : 365;
+  const longQuery = useDailyAggregates(dailyFetchDays, {
+    enabled: useDailyFetch,
   });
 
   const isLoading = isShort ? shortQuery.isLoading : longQuery.isLoading;
@@ -120,14 +137,36 @@ export function HistoryClient() {
     [isShort, shortQuery.data?.samples],
   );
 
-  // Long-range daily-aggregate rows. The fetch always asks for at
-  // least 181 days (endpoint minimum) and at most 730; we slice
-  // into "current" (most-recent range.days rows) and "compare"
-  // (range.days rows starting 365 days before today) here so
-  // downstream consumers see two clean arrays.
+  // Daily-aggregate rows for long + calendar ranges. The fetch always
+  // asks for at least 181 days (endpoint minimum) and at most 730; we
+  // slice into "current" and "compare" here so downstream consumers
+  // see two clean arrays.
+  //   - long: current = most-recent `range.days` rows; compare =
+  //     `range.days` rows starting 365 days before today
+  //     ("vs same period last year").
+  //   - calendar: current = rows whose station-local day falls in
+  //     [startMs, endMs); compare = [] (12mo compare needs a wider
+  //     fetch than the 730-day cap allows without partial-month
+  //     truncation, which would undermine the whole point of the
+  //     calendar-aligned view — deferred behind a future API
+  //     extension that accepts an explicit `before` offset).
   const { dailyRows, compareDailyRows } = React.useMemo(() => {
-    if (!isLong) return { dailyRows: [], compareDailyRows: [] };
+    if (range.kind === "short") {
+      return { dailyRows: [], compareDailyRows: [] };
+    }
     const all = longQuery.data?.aggregates ?? [];
+    if (range.kind === "calendar") {
+      const { startMs, endMs } = range;
+      const sliced = all.filter((row) => {
+        const ms = startOfStationDay(
+          new Date(`${row.date}T12:00:00Z`).getTime(),
+          tz,
+        );
+        return ms >= startMs && ms < endMs;
+      });
+      return { dailyRows: sliced, compareDailyRows: [] };
+    }
+    // From here range.kind === "long" — `range.days` is safe.
     // Slice the response down to the user-facing `range.days`. For
     // 90d and early-year YTD this drops the over-fetched padding
     // that was needed to satisfy the 181-day API minimum. Without
@@ -169,7 +208,7 @@ export function HistoryClient() {
       return ms >= compareStartMs && ms < compareEndMs;
     });
     return { dailyRows: current, compareDailyRows: compare };
-  }, [isLong, longCompareEnabled, longQuery.data?.aggregates, range, tz]);
+  }, [longCompareEnabled, longQuery.data?.aggregates, range, tz]);
 
   // At 24h we keep raw line charts. Anywhere ≥7d we use the
   // daily-aggregate variant — short-range aggregates client-side,
@@ -196,10 +235,12 @@ export function HistoryClient() {
   // doesn't pay the O(n) pass independently. The station's tz is
   // passed in so day boundaries anchor at station-local midnight,
   // not the browser's midnight. Source differs by range family:
-  // short → aggregateByDay(samples), long → fromDailyAggregates(rows).
+  // short → aggregateByDay(samples); long + calendar →
+  // fromDailyAggregates(rows) (same data shape, dailyRows already
+  // sliced to the correct window above).
   const aggregates = React.useMemo(() => {
     if (!useDaily) return null;
-    if (isLong) {
+    if (useDailyFetch) {
       // Always pass RAW daily aggregates. The DailyAggregateChart
       // component handles smoothing internally via its `smooth` prop
       // (set by the caller below to 7 for long-range), so we don't
@@ -229,7 +270,7 @@ export function HistoryClient() {
       pressure: aggregateByDay(samples, pickPressureInHg, tz),
       rain: aggregateByDay(samples, pickRainIn, tz),
     };
-  }, [useDaily, isLong, dailyRows, samples, tz]);
+  }, [useDaily, useDailyFetch, dailyRows, samples, tz]);
 
   // Compare aggregates: timestamps shifted forward to overlap on
   // the current period's x-axis. We re-anchor each shifted point
@@ -303,19 +344,31 @@ export function HistoryClient() {
 
   // WindRose + PersonalRecords now consume their range family's
   // native shape directly (samples for short, daily aggregates for
-  // long) — no more synthetic-sample adapter. See the discriminated
-  // union props on each component for the two code paths.
-  const hasBottomData = isLong ? dailyRows.length > 0 : samples.length > 0;
+  // long + calendar) — no more synthetic-sample adapter. See the
+  // discriminated union props on each component for the two code paths.
+  const hasBottomData = useDailyFetch
+    ? dailyRows.length > 0
+    : samples.length > 0;
 
   // Used by MetricChart (24h rendering) and PersonalRecords (title).
   // PersonalRecords switches its title between "Today's peaks" /
   // "Week peaks" / "Month peaks" / "Year peaks" based on this value.
-  const hours = isShort ? range.hours : range.days * 24;
+  // Calendar derives its day-span from `endMs - startMs` so the title
+  // logic stays consistent with long-range "365d ≈ 1 year" framing.
+  const displayDays =
+    range.kind === "long"
+      ? range.days
+      : range.kind === "calendar"
+        ? Math.round((range.endMs - range.startMs) / 86_400_000)
+        : 0;
+  const hours = isShort ? range.hours : displayDays * 24;
 
   // Whether the Compare toggle is even applicable for the current
   // range. Short-range 24h doesn't make sense to compare (yesterday's
-  // diurnal cycle just sits on top); single source of truth used by
-  // both the toggle's render gate AND the description label.
+  // diurnal cycle just sits on top); 12mo / calendar ranges don't
+  // support compare yet (would need a fetch beyond the 730-day cap or
+  // a separate query — deferred). Single source of truth used by both
+  // the toggle's render gate AND the description label.
   const canCompare = (isShort && range.hours > 24) || isLong;
   const compareLabel = isLong
     ? "Compare to last year"
@@ -334,7 +387,24 @@ export function HistoryClient() {
             on the right (compare uses `sm:order-first` to sit before
             the picker — matches the prior desktop layout). */}
       <div className="space-y-2 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:space-y-0">
-        <h1 className="text-lg font-medium tracking-tight">History</h1>
+        <div>
+          <h1 className="text-lg font-medium tracking-tight">History</h1>
+          {/* Date-range caption — the actual window the page is
+              showing. Format adapts to range family:
+                - calendar (12mo): "May 2025 – Apr 2026"
+                - long (90d/YTD/365d): "May 19, 2025 – May 18, 2026"
+                - short (24h): "May 17 7:23 PM – May 18 7:23 PM"
+                - short (7d/30d): "Apr 18 – May 18, 2026"
+              The caption is computed off `nowMs` (60s tick from
+              useNow) so it stays current as the tab ages — same
+              cadence that keeps the YTD count accurate. */}
+          <div
+            className="text-xs text-muted-foreground tabular-nums"
+            aria-live="polite"
+          >
+            {formatRangeWindow(range, nowMs, tz)}
+          </div>
+        </div>
         <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
           <RangePicker ranges={ranges} value={range} onChange={setRange} />
           {canCompare && (
@@ -370,7 +440,7 @@ export function HistoryClient() {
               <DailyAggregateChart
                 data={aggregates.temp}
                 compare={compareAggregates?.temp}
-                smooth={isLong ? 7 : 0}
+                smooth={useDailyFetch ? 7 : 0}
                 label="Temperature"
                 unit="°F"
                 color="var(--chart-1)"
@@ -382,7 +452,7 @@ export function HistoryClient() {
               <DailyAggregateChart
                 data={aggregates.humidity}
                 compare={compareAggregates?.humidity}
-                smooth={isLong ? 7 : 0}
+                smooth={useDailyFetch ? 7 : 0}
                 label="Humidity"
                 unit="%"
                 color="var(--chart-2)"
@@ -395,7 +465,7 @@ export function HistoryClient() {
               <DailyAggregateChart
                 data={aggregates.windAvg}
                 compare={compareAggregates?.windAvg}
-                smooth={isLong ? 7 : 0}
+                smooth={useDailyFetch ? 7 : 0}
                 label="Wind (daily avg)"
                 unit="mph"
                 color="var(--chart-3)"
@@ -407,7 +477,7 @@ export function HistoryClient() {
               <DailyAggregateChart
                 data={aggregates.windGust}
                 compare={compareAggregates?.windGust}
-                smooth={isLong ? 7 : 0}
+                smooth={useDailyFetch ? 7 : 0}
                 label="Wind (daily peak gust)"
                 unit="mph"
                 color="var(--chart-3)"
@@ -419,7 +489,7 @@ export function HistoryClient() {
               <DailyAggregateChart
                 data={aggregates.pressure}
                 compare={compareAggregates?.pressure}
-                smooth={isLong ? 7 : 0}
+                smooth={useDailyFetch ? 7 : 0}
                 label="Pressure (daily avg)"
                 unit="inHg"
                 color="var(--chart-4)"
@@ -437,7 +507,7 @@ export function HistoryClient() {
                 // signal to render an invisible placeholder under
                 // the label, keeping the rain card's header height
                 // matched with its smoothed siblings in the row.
-                smooth={isLong ? 7 : 0}
+                smooth={useDailyFetch ? 7 : 0}
                 label="Rain (daily total)"
                 unit="in"
                 color="var(--chart-2)"
@@ -529,13 +599,13 @@ export function HistoryClient() {
           honest WindRose vote count (1/day instead of 2/day). */}
       {hasBottomData && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {isLong ? (
+          {useDailyFetch ? (
             <>
               <WindRose kind="daily" rows={dailyRows} />
               <PersonalRecords
                 kind="daily"
                 rows={dailyRows}
-                days={range.kind === "long" ? range.days : 0}
+                days={displayDays}
               />
             </>
           ) : (
@@ -552,4 +622,54 @@ export function HistoryClient() {
       )}
     </div>
   );
+}
+
+/**
+ * Format the visible data window as a human-readable date range
+ * caption shown under the "History" title. Adapts to range family:
+ *
+ *   - calendar (12mo): "May 2025 – Apr 2026" (month + year on each
+ *     end; the range covers complete calendar months only).
+ *   - long (90d / YTD / 365d): "May 19, 2025 – May 18, 2026" (rolling
+ *     window through now; year is always shown since these often
+ *     straddle a year boundary).
+ *   - short 24h: "May 17, 7:23 PM – May 18, 7:23 PM" (clock precision
+ *     since the window is sub-daily).
+ *   - short 7d / 30d: "Apr 18 – May 18, 2026" (day-precision; year
+ *     shown once since these never straddle a year here).
+ *
+ * Computed off the live `nowMs` (60s tick) so the caption ages with
+ * the tab, matching the rest of the range-derived UI.
+ */
+function formatRangeWindow(range: Range, nowMs: number, tz: string): string {
+  if (range.kind === "calendar") {
+    const start = formatInTimeZone(new Date(range.startMs), tz, "MMM yyyy");
+    // `endMs` is exclusive (first ms of the current month). Stepping
+    // back one day lands inside the last complete month — that's what
+    // we want to label as the right-hand bound.
+    const lastCompleteMonthMs = range.endMs - 86_400_000;
+    const end = formatInTimeZone(
+      new Date(lastCompleteMonthMs),
+      tz,
+      "MMM yyyy",
+    );
+    return `${start} – ${end}`;
+  }
+  if (range.kind === "short" && range.hours <= 24) {
+    const startMs = nowMs - range.hours * 3_600_000;
+    return `${formatInTimeZone(
+      new Date(startMs),
+      tz,
+      "MMM d, h:mm a",
+    )} – ${formatInTimeZone(new Date(nowMs), tz, "MMM d, h:mm a")}`;
+  }
+  // long, or short ≥ 7d — both are day-precision day-or-month windows.
+  const spanMs =
+    range.kind === "short" ? range.hours * 3_600_000 : range.days * 86_400_000;
+  const startMs = nowMs - spanMs;
+  return `${formatInTimeZone(
+    new Date(startMs),
+    tz,
+    "MMM d, yyyy",
+  )} – ${formatInTimeZone(new Date(nowMs), tz, "MMM d, yyyy")}`;
 }

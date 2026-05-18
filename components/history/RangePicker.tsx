@@ -4,33 +4,51 @@ import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { cn } from "@/lib/utils";
 
 /**
- * History-tab time windows fall into two families:
+ * History-tab time windows fall into three families:
  *
  *   - **short** (≤30 days): `hours`-keyed, served from
  *     `useRecentHistory(hours)` which returns sub-daily bucketed
  *     observations (Tempest's auto-bucketing returns 1-min, 5-min,
  *     30-min, or 3-hour cadence depending on range).
  *
- *   - **long** (≥90 days): `days`-keyed, served from
+ *   - **long** (≥90 days): `days`-keyed rolling windows, served from
  *     `useDailyAggregates(days)` which returns Tempest's pre-rolled
  *     daily aggregates from the obs_st_ext format. Tempest caps the
  *     long-window endpoint at 730 days (about 2 years).
  *
- * The two families render through the same chart components but
- * source from different hooks. A single `Range` discriminates which
- * family + which size via the `kind` field.
+ *   - **calendar**: explicit `startMs`/`endMs` calendar-aligned
+ *     windows (e.g. "last 12 complete months"). Same underlying fetch
+ *     as long, but the response is sliced to exact month boundaries
+ *     so every monthly-bucket tile carries full-month data. Distinct
+ *     from `long` so the rest of the pipeline can still rely on
+ *     `range.days` meaning "rolling through now."
+ *
+ * The three families render through the same chart components but
+ * source from different hooks / slices. A single `Range` discriminates
+ * which family via the `kind` field.
  */
 
 export type Range =
   | { kind: "short"; label: string; hours: number }
-  | { kind: "long"; label: string; days: number };
+  | { kind: "long"; label: string; days: number }
+  | {
+      kind: "calendar";
+      label: string;
+      months: number;
+      /** Inclusive station-local start (UTC ms). */
+      startMs: number;
+      /** Exclusive station-local end (UTC ms) — first ms of the
+       *  month AFTER the last complete month, so half-open [start, end). */
+      endMs: number;
+    };
 
 /**
  * Build the active range list. Takes the station's IANA tz so the
- * YTD calculation is anchored to station-local Jan 1 (the user's
- * actual reference for "this year"), not the viewer's tz. Re-build
- * each render so YTD stays accurate across day boundaries — the
- * old module-level `RANGES = [...]` froze YTD at page-load time
+ * YTD + 12mo calculations are anchored to station-local calendar
+ * boundaries (the user's actual reference for "this year" and "last
+ * 12 months"), not the viewer's tz. Re-build each render so the
+ * calendar-derived ranges stay accurate across day boundaries — the
+ * old module-level `RANGES = [...]` froze them at page-load time
  * and would silently drift if the tab stayed open across midnight.
  */
 export function buildRanges(tz: string, nowMs: number): Range[] {
@@ -40,8 +58,47 @@ export function buildRanges(tz: string, nowMs: number): Range[] {
     { kind: "short", label: "30d", hours: 24 * 30 },
     { kind: "long", label: "90d", days: 90 },
     { kind: "long", label: "YTD", days: ytdDays(tz, nowMs) },
-    { kind: "long", label: "1y", days: 365 },
+    { kind: "long", label: "365d", days: 365 },
+    { kind: "calendar", label: "12mo", months: 12, ...calendarMonthsBounds(tz, nowMs, 12) },
   ];
+}
+
+/**
+ * Compute station-local calendar bounds for "last N complete calendar
+ * months ending last month." For 12 months in mid-May 2026, returns
+ * `{ startMs: May 1 2025 00:00 station-local, endMs: May 1 2026 00:00
+ * station-local }`. The end is half-open (first ms of the current
+ * month) so the range covers exactly N complete months and never the
+ * in-progress current month.
+ *
+ * Calendar arithmetic is done on the YYYY-MM string in station-tz,
+ * NOT raw ms subtraction — month lengths vary, and `subMonths` on a
+ * Date object can shift the local-time hour across DST transitions in
+ * tz-observing zones. The string-based approach keeps the result
+ * unambiguous regardless of when in the year the call happens.
+ */
+export function calendarMonthsBounds(
+  tz: string,
+  nowMs: number,
+  months: number,
+): { startMs: number; endMs: number } {
+  const currentMonthLabel = formatInTimeZone(new Date(nowMs), tz, "yyyy-MM");
+  // End = first ms of the current month (station-local midnight).
+  const endMs = fromZonedTime(
+    `${currentMonthLabel}-01T00:00:00`,
+    tz,
+  ).getTime();
+  // Start = first ms of (months) months earlier, via calendar string math.
+  const [yStr, mStr] = currentMonthLabel.split("-");
+  let y = Number(yStr);
+  let m = Number(mStr) - months;
+  while (m <= 0) {
+    m += 12;
+    y -= 1;
+  }
+  const startLabel = `${y}-${String(m).padStart(2, "0")}-01T00:00:00`;
+  const startMs = fromZonedTime(startLabel, tz).getTime();
+  return { startMs, endMs };
 }
 
 /**
@@ -85,9 +142,11 @@ export function ytdDays(tz: string, nowMs: number): number {
  */
 function isSame(a: Range, b: Range): boolean {
   if (a.kind !== b.kind) return false;
-  return a.kind === "short"
-    ? a.hours === (b as { hours: number }).hours
-    : a.days === (b as { days: number }).days;
+  if (a.kind === "short") return a.hours === (b as { hours: number }).hours;
+  if (a.kind === "long") return a.days === (b as { days: number }).days;
+  // calendar — compare by `months`; startMs/endMs drift across midnight
+  // as `nowMs` ticks, so ref-equality on bounds isn't safe.
+  return a.months === (b as { months: number }).months;
 }
 
 export function RangePicker({
@@ -109,7 +168,12 @@ export function RangePicker({
     >
       {ranges.map((r) => {
         const active = isSame(value, r);
-        const key = r.kind === "short" ? `h${r.hours}` : `d${r.days}`;
+        const key =
+          r.kind === "short"
+            ? `h${r.hours}`
+            : r.kind === "long"
+              ? `d${r.days}`
+              : `m${r.months}`;
         return (
           <button
             key={key}
