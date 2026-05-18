@@ -6,10 +6,9 @@
  * formatter — there is no module-level default tz, deliberately.
  *
  * Why no default: this dashboard ships as a public, self-hostable
- * repo. A hardcoded default IANA tz would only ever be correct for
- * one specific station; for everyone else it would silently render
- * timestamps in the wrong zone. Requiring `tz` at every call site
- * forces every code path to be tz-aware.
+ * repo. A default of "America/Phoenix" was correct for the original
+ * deployment but silently wrong for anyone else. Requiring `tz` at
+ * every call site forces every code path to be tz-aware.
  */
 
 import { formatInTimeZone, getTimezoneOffset } from "date-fns-tz";
@@ -29,6 +28,12 @@ export const formatDateShort = (d: Date | number, tz: string): string =>
 export const formatMonthDay = (d: Date | number, tz: string): string =>
   formatInTimeZone(toDate(d), tz, "MMM d");
 
+/** "Apr 24, 2025" — used for the History-tab Records compare line
+ *  where the timestamp is from a different year than the current
+ *  period and the year matters for disambiguation. */
+export const formatMonthDayYear = (d: Date | number, tz: string): string =>
+  formatInTimeZone(toDate(d), tz, "MMM d, yyyy");
+
 /** "Mon" */
 export const formatWeekday = (d: Date | number, tz: string): string =>
   formatInTimeZone(toDate(d), tz, "EEE");
@@ -42,9 +47,9 @@ export const formatClockWithDay = (d: Date | number, tz: string): string =>
  *
  * Implementation note: we derive the offset at the candidate instant
  * via date-fns-tz's `getTimezoneOffset`, which handles DST automatically.
- * A hardcoded numeric offset (e.g. `-07:00`) is fine for non-DST zones
- * but quietly wrong for any zone that observes DST. This is the entire
- * reason the tz argument is required across this module.
+ * A hardcoded `-07:00` was fine for Phoenix (no DST) but quietly broken
+ * for any zone that observes DST. This is the entire reason the tz
+ * argument is required across this module.
  */
 export function startOfStationDay(ms: number, tz: string): number {
   const ymd = formatInTimeZone(new Date(ms), tz, "yyyy-MM-dd");
@@ -54,9 +59,8 @@ export function startOfStationDay(ms: number, tz: string): number {
   // Step 2: the station's offset at that instant (ms east of UTC).
   const offsetMs = getTimezoneOffset(tz, new Date(fakeUtcMidnight));
   // Step 3: actual local midnight = fakeUtcMidnight − offset.
-  // (e.g. for a UTC-7 zone, offset = −25_200_000; fakeUtc minus that
-  // negative number lands at 07:00 UTC, which is 00:00 in the local
-  // zone — exactly what we want.)
+  // (e.g. Phoenix offset = −25_200_000; fakeUtc − (−25_200_000) lands at 07:00 UTC,
+  // which is 00:00 PHX, exactly what we want.)
   return fakeUtcMidnight - offsetMs;
 }
 

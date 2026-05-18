@@ -18,7 +18,12 @@ import {
   mmToIn,
   mpsToMph,
 } from "@/lib/tempest/conversions";
-import { formatClock, formatMonthDay, startOfStationDay } from "@/lib/tempest/format";
+import {
+  formatClock,
+  formatMonthDay,
+  formatMonthDayYear,
+  startOfStationDay,
+} from "@/lib/tempest/format";
 import type { DeviceDailyAggregate } from "@/lib/tempest/server-client";
 import { useStationTz } from "@/lib/tempest/tz-context";
 
@@ -270,15 +275,17 @@ export function PersonalRecords(props: Props) {
             </div>
             {/* Compare line: rendered ONLY when the parent passed
                 `compareSamples`/`compareRows` AND the compare period
-                had data for this metric. The "vs N · Mmm DD" format
-                stays compact (≤ ~14 chars) so it fits the narrow
-                tile widths at 3 cols (sm+) without wrap. Inherits
-                `text-muted-foreground` from the tile container — same
-                AA-safe contrast pair as the date line above. */}
+                had data for this metric. The "vs N · Mmm DD, YYYY"
+                format includes the year so it's obvious the compare
+                date is from a different period (especially valuable
+                for long / calendar ranges where the year-over-year
+                pairing matters). Inherits `text-muted-foreground`
+                from the tile container — same AA-safe contrast pair
+                as the date line above. */}
             {compareValue && (
               <div className="text-[10px] tabular text-muted-foreground">
                 vs {format(compareValue.displayValue)} ·{" "}
-                {formatMonthDay(compareValue.tsMs, tz)}
+                {formatMonthDayYear(compareValue.tsMs, tz)}
               </div>
             )}
           </li>
