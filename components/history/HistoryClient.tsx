@@ -19,6 +19,7 @@ import { startOfStationDay } from "@/lib/tempest/format";
 import {
   aggregateByDay,
   fromDailyAggregates,
+  toCumulative,
   type DailyAggregate,
 } from "./aggregate";
 import { DailyAggregateChart } from "./DailyAggregateChart";
@@ -319,13 +320,21 @@ export function HistoryClient() {
       // Header stats inside the chart are computed off the raw data
       // unconditionally so they always reflect the actual annual
       // extremes.
+      const rain = fromDailyAggregates(dailyRows, dayPickRain, tz);
       return {
         temp: fromDailyAggregates(dailyRows, dayPickTemp, tz),
         humidity: fromDailyAggregates(dailyRows, dayPickHumidity, tz),
         windAvg: fromDailyAggregates(dailyRows, dayPickWindAvg, tz),
         windGust: fromDailyAggregates(dailyRows, dayPickWindGust, tz),
         pressure: fromDailyAggregates(dailyRows, dayPickPressure, tz),
-        rain: fromDailyAggregates(dailyRows, dayPickRain, tz),
+        rain,
+        // Running cumulative rain for the cumulative chart. Same
+        // timestamps as `rain` so the two charts share an x-axis.
+        // Daily-aggregate variant only — short-range cumulative
+        // would need a per-sample scan that doesn't reset across
+        // outage minutes and we haven't surfaced a per-sample
+        // cumulative chart in the short-range layout.
+        rainCumulative: toCumulative(rain),
       };
     }
     // Short-range path — same as before.
@@ -333,13 +342,15 @@ export function HistoryClient() {
     // per bucket, so each sample's rainIn already represents the bucket
     // total in inches. `aggregateByDay`'s `sum` field then yields the
     // honest daily total — no multiplication tricks needed.
+    const rain = aggregateByDay(samples, pickRainIn, tz);
     return {
       temp: aggregateByDay(samples, pickTempF, tz),
       humidity: aggregateByDay(samples, pickHumidity, tz),
       windAvg: aggregateByDay(samples, pickWindMph, tz),
       windGust: aggregateByDay(samples, pickGustMph, tz),
       pressure: aggregateByDay(samples, pickPressureInHg, tz),
-      rain: aggregateByDay(samples, pickRainIn, tz),
+      rain,
+      rainCumulative: toCumulative(rain),
     };
   }, [useDaily, useDailyFetch, dailyRows, samples, tz]);
 
@@ -374,6 +385,11 @@ export function HistoryClient() {
           ...d,
           ts: startOfStationDay(addYears(new Date(d.ts), 1).getTime(), tz),
         }));
+      const compareRain = fromDailyAggregates(
+        compareDailyRows,
+        dayPickRain,
+        tz,
+      );
       return {
         temp: shift(fromDailyAggregates(compareDailyRows, dayPickTemp, tz)),
         humidity: shift(
@@ -388,20 +404,32 @@ export function HistoryClient() {
         pressure: shift(
           fromDailyAggregates(compareDailyRows, dayPickPressure, tz),
         ),
-        rain: shift(fromDailyAggregates(compareDailyRows, dayPickRain, tz)),
+        rain: shift(compareRain),
+        // Compare cumulative — accumulate the prior-year rain in
+        // chronological order FIRST, then shift forward 1 year so
+        // the line overlays cleanly on the current period's x-axis.
+        // (Order doesn't actually matter since the shift only touches
+        // `ts`, not the values, but accumulating-then-shifting reads
+        // more naturally.)
+        rainCumulative: shift(toCumulative(compareRain)),
       };
     }
     if (isShort && compareSamples.length > 0) {
       const shiftMs = range.hours * 60 * 60 * 1000;
       const shift = (arr: DailyAggregate[]): DailyAggregate[] =>
         arr.map((d) => ({ ...d, ts: startOfStationDay(d.ts + shiftMs, tz) }));
+      const compareRain = aggregateByDay(compareSamples, pickRainIn, tz);
       return {
         temp: shift(aggregateByDay(compareSamples, pickTempF, tz)),
         humidity: shift(aggregateByDay(compareSamples, pickHumidity, tz)),
         windAvg: shift(aggregateByDay(compareSamples, pickWindMph, tz)),
         windGust: shift(aggregateByDay(compareSamples, pickGustMph, tz)),
         pressure: shift(aggregateByDay(compareSamples, pickPressureInHg, tz)),
-        rain: shift(aggregateByDay(compareSamples, pickRainIn, tz)),
+        rain: shift(compareRain),
+        // Carried through for type-shape parity with the long-range
+        // branch; short-range layout doesn't currently render the
+        // cumulative chart, so this field goes unused in practice.
+        rainCumulative: shift(toCumulative(compareRain)),
       };
     }
     return null;
@@ -589,23 +617,52 @@ export function HistoryClient() {
               />
             </ExpandableChart>
             <ExpandableChart>
+              {/* Cumulative rain sits in slot 6 next to Pressure so
+                  the year-over-year "are we ahead or behind on
+                  rainfall?" question has dedicated real estate, and
+                  the daily-total bars get pushed to the full-width
+                  row below where their narrow bars have room to
+                  breathe at long ranges. */}
               <DailyAggregateChart
-                data={aggregates.rain}
-                compare={compareAggregates?.rain}
-                // sum-variant ignores smooth internally (averaging
-                // a sum destroys the burst signal), but the chart
-                // uses this prop as a "are we at long range?"
-                // signal to render an invisible placeholder under
-                // the label, keeping the rain card's header height
-                // matched with its smoothed siblings in the row.
+                data={aggregates.rainCumulative}
+                compare={compareAggregates?.rainCumulative}
                 smooth={useDailyFetch ? 7 : 0}
-                label="Rain (daily total)"
+                label="Rain (cumulative)"
                 unit="in"
                 color="var(--chart-2)"
-                variant="sum"
+                variant="cumulative"
                 formatValue={(v) => v.toFixed(2)}
               />
             </ExpandableChart>
+            {/* Daily rain spans the full grid width (lg:col-span-2)
+                so the per-day bars get the full row to themselves —
+                roughly 2× the bar width vs sharing a row with another
+                chart. Combined with the cumulative chart above, this
+                gives rain two complementary readings: cumulative for
+                "are we trending wet or dry?" and daily for "which
+                days had storms?". The wrapping div carries the
+                col-span class so ExpandableChart's signature stays
+                unchanged. */}
+            <div className="lg:col-span-2">
+              <ExpandableChart>
+                <DailyAggregateChart
+                  data={aggregates.rain}
+                  compare={compareAggregates?.rain}
+                  // sum-variant ignores smooth internally (averaging
+                  // a sum destroys the burst signal), but the chart
+                  // uses this prop as a "are we at long range?"
+                  // signal to render an invisible placeholder under
+                  // the label, keeping the rain card's header height
+                  // matched with its smoothed siblings in the row.
+                  smooth={useDailyFetch ? 7 : 0}
+                  label="Rain (daily total)"
+                  unit="in"
+                  color="var(--chart-2)"
+                  variant="sum"
+                  formatValue={(v) => v.toFixed(2)}
+                />
+              </ExpandableChart>
+            </div>
           </>
         ) : (
           <>

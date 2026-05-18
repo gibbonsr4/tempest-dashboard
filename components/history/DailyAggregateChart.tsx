@@ -27,12 +27,19 @@ import { TooltipRow } from "./DailyAggregateChartTooltip";
  * diurnal cycle drowning out signal.
  *
  * Variants:
- *   - "range":  high/low band + mean line (temp, humidity)
- *   - "max":    line of daily maximum (gusts)
- *   - "mean":   line of daily mean (pressure, wind avg)
- *   - "sum":    bar of daily total (rain accumulation)
+ *   - "range":      high/low band + mean line (temp, humidity)
+ *   - "max":        line of daily maximum (gusts)
+ *   - "mean":       line of daily mean (pressure, wind avg)
+ *   - "sum":        bar of daily total (rain accumulation)
+ *   - "cumulative": line of running cumulative total. Caller passes
+ *                   pre-cumulative rows (via `toCumulative` in
+ *                   aggregate.ts); the chart treats `mean` as the
+ *                   running total. Header shows a single "total"
+ *                   stat (no min/avg/max — cumulative is monotonic).
+ *                   Smoothing is bypassed (already smooth) and no
+ *                   dots are drawn on the line.
  */
-type Variant = "range" | "max" | "mean" | "sum";
+type Variant = "range" | "max" | "mean" | "sum" | "cumulative";
 
 export function DailyAggregateChart({
   data,
@@ -111,12 +118,14 @@ export function DailyAggregateChart({
   // metrics (rain bars) ignore the smooth value because averaging
   // a daily-total destroys the bursty signal.
   const smoothedData = React.useMemo(() => {
-    if (smooth <= 0 || variant === "sum") return data;
+    if (smooth <= 0 || variant === "sum" || variant === "cumulative")
+      return data;
     return smoothDailyAggregates(data, smooth);
   }, [data, smooth, variant]);
   const smoothedCompare = React.useMemo(() => {
     if (!compare) return undefined;
-    if (smooth <= 0 || variant === "sum") return compare;
+    if (smooth <= 0 || variant === "sum" || variant === "cumulative")
+      return compare;
     return smoothDailyAggregates(compare, smooth);
   }, [compare, smooth, variant]);
 
@@ -150,10 +159,22 @@ export function DailyAggregateChart({
   // so the same logic produces both the current-period summary and
   // the optional compare-period summary shown alongside in the header
   // when "Compare to last year" is on. Same variant-aware picks
-  // (range, max, mean, sum) as the chart line itself.
+  // (range, max, mean, sum, cumulative) as the chart line itself.
   const computeSummary = React.useCallback(
     (rows: DailyAggregate[]) => {
       if (rows.length === 0) return null;
+      // Cumulative is monotonically non-decreasing, so the only
+      // meaningful summary is the final value (which is the total).
+      // Walk from the end to find the most recent non-null mean.
+      if (variant === "cumulative") {
+        for (let i = rows.length - 1; i >= 0; i--) {
+          const v = rows[i].mean;
+          if (v != null && Number.isFinite(v)) {
+            return { min: 0, max: v, avg: v, total: v };
+          }
+        }
+        return null;
+      }
       let min = Infinity;
       let max = -Infinity;
       let sum = 0;
@@ -254,53 +275,74 @@ export function DailyAggregateChart({
             </span>
           )}
         </div>
-        {summary && (
-          // Compare values render inline as " / N" after each current
-          // value. They inherit the parent `text-muted-foreground`
-          // (same color as the "min" / "avg" / "max" labels — already
-          // a known-good AA contrast pair against the card bg), with
-          // the current value in `text-foreground` carrying the
-          // visual hierarchy. The " / " is in the same muted color so
-          // the eye reads "<bold current> [muted vs] <muted prior>".
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground tabular">
-            <span className="whitespace-nowrap">
-              min{" "}
-              <span className="text-foreground">
-                {formatValue(summary.min)}
-              </span>
-              {compareSummary && <> / {formatValue(compareSummary.min)}</>}
-            </span>
-            <span className="whitespace-nowrap">
-              {variant === "sum" ? "total" : "avg"}{" "}
-              <span className="text-foreground">
-                {formatValue(
-                  variant === "sum" ? summary.total : summary.avg,
+        {summary &&
+          (variant === "cumulative" ? (
+            // Cumulative header is a single "total {N} / {compare}" —
+            // min/avg/max would all be the same final value (or 0),
+            // so they collapse to one meaningful stat. Same muted/
+            // foreground color treatment as the multi-stat header
+            // below so the row reads as a peer in the chart grid.
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground tabular">
+              <span className="whitespace-nowrap">
+                total{" "}
+                <span className="text-foreground">
+                  {formatValue(summary.total)}
+                </span>
+                {compareSummary && (
+                  <> / {formatValue(compareSummary.total)}</>
                 )}
               </span>
-              {compareSummary && (
-                <>
-                  {" "}
-                  /{" "}
-                  {formatValue(
-                    variant === "sum"
-                      ? compareSummary.total
-                      : compareSummary.avg,
-                  )}
-                </>
-              )}
-            </span>
-            <span className="whitespace-nowrap">
-              max{" "}
-              <span className="text-foreground">
-                {formatValue(summary.max)}
+              <span className="whitespace-nowrap text-[10px] normal-case tracking-normal">
+                {unit}
               </span>
-              {compareSummary && <> / {formatValue(compareSummary.max)}</>}
-            </span>
-            <span className="whitespace-nowrap text-[10px] normal-case tracking-normal">
-              {unit}
-            </span>
-          </div>
-        )}
+            </div>
+          ) : (
+            // Compare values render inline as " / N" after each current
+            // value. They inherit the parent `text-muted-foreground`
+            // (same color as the "min" / "avg" / "max" labels — already
+            // a known-good AA contrast pair against the card bg), with
+            // the current value in `text-foreground` carrying the
+            // visual hierarchy. The " / " is in the same muted color so
+            // the eye reads "<bold current> [muted vs] <muted prior>".
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground tabular">
+              <span className="whitespace-nowrap">
+                min{" "}
+                <span className="text-foreground">
+                  {formatValue(summary.min)}
+                </span>
+                {compareSummary && <> / {formatValue(compareSummary.min)}</>}
+              </span>
+              <span className="whitespace-nowrap">
+                {variant === "sum" ? "total" : "avg"}{" "}
+                <span className="text-foreground">
+                  {formatValue(
+                    variant === "sum" ? summary.total : summary.avg,
+                  )}
+                </span>
+                {compareSummary && (
+                  <>
+                    {" "}
+                    /{" "}
+                    {formatValue(
+                      variant === "sum"
+                        ? compareSummary.total
+                        : compareSummary.avg,
+                    )}
+                  </>
+                )}
+              </span>
+              <span className="whitespace-nowrap">
+                max{" "}
+                <span className="text-foreground">
+                  {formatValue(summary.max)}
+                </span>
+                {compareSummary && <> / {formatValue(compareSummary.max)}</>}
+              </span>
+              <span className="whitespace-nowrap text-[10px] normal-case tracking-normal">
+                {unit}
+              </span>
+            </div>
+          ))}
       </div>
 
       {points.length === 0 ? (
@@ -369,7 +411,9 @@ export function DailyAggregateChart({
                     ? row.sum != null && Number.isFinite(row.sum)
                     : variant === "max"
                       ? row.max != null && Number.isFinite(row.max)
-                      : row.mean != null && Number.isFinite(row.mean);
+                      : // cumulative reads `mean` (running total),
+                        // same as range/mean variants.
+                        row.mean != null && Number.isFinite(row.mean);
                 // For sum-style metrics (rain), most days at year
                 // scale are dry. We previously returned `null` here
                 // to suppress the tooltip on zero/zero days, but
@@ -457,6 +501,17 @@ export function DailyAggregateChart({
                         unit={unit}
                       />
                     )}
+                    {hasData &&
+                      variant === "cumulative" &&
+                      row.mean != null && (
+                        <TooltipRow
+                          color={color}
+                          swatchKind="line"
+                          label="Total to date"
+                          value={formatValue(row.mean)}
+                          unit={unit}
+                        />
+                      )}
                     {compare &&
                       (variant === "range" || variant === "mean") &&
                       row.compareMean != null && (
@@ -487,6 +542,17 @@ export function DailyAggregateChart({
                           swatchKind="bar"
                           label="Previous total"
                           value={formatValue(row.compareSum)}
+                          unit={unit}
+                        />
+                      )}
+                    {compare &&
+                      variant === "cumulative" &&
+                      row.compareMean != null && (
+                        <TooltipRow
+                          color="var(--muted-foreground)"
+                          swatchKind="dashed"
+                          label="Last year to date"
+                          value={formatValue(row.compareMean)}
                           unit={unit}
                         />
                       )}
@@ -529,6 +595,23 @@ export function DailyAggregateChart({
                 isAnimationActive={false}
               />
             )}
+            {compare && variant === "cumulative" && (
+              // Cumulative compare line — `linear` interpolation
+              // matches the main cumulative line's strict
+              // non-decreasing behavior (monotone interp can dip
+              // slightly between points, which would visually
+              // contradict the running-total semantic).
+              <Line
+                type="linear"
+                dataKey="compareMean"
+                stroke="var(--color-compareMean)"
+                strokeWidth={data.length > 120 ? 1.75 : 1.25}
+                strokeDasharray={data.length > 120 ? "5 4" : "3 3"}
+                strokeOpacity={data.length > 120 ? 0.85 : 0.7}
+                dot={false}
+                isAnimationActive={false}
+              />
+            )}
             {compare && variant === "max" && (
               <Line
                 type="monotone"
@@ -562,6 +645,23 @@ export function DailyAggregateChart({
                       ? { r: 1, fill: "var(--color-mean)" }
                       : { r: 2, fill: "var(--color-mean)" }
                 }
+                isAnimationActive={false}
+              />
+            )}
+            {variant === "cumulative" && (
+              // Cumulative line — monotonically non-decreasing, no
+              // dots needed (every day has a value and dots crowd a
+              // smoothly-climbing line). `monotone` interpolation
+              // would be inappropriate here (it can dip slightly to
+              // smooth corners, which violates the running-total
+              // semantic). Linear interpolation keeps the line
+              // strictly non-decreasing between data points.
+              <Line
+                type="linear"
+                dataKey="mean"
+                stroke="var(--color-mean)"
+                strokeWidth={2}
+                dot={false}
                 isAnimationActive={false}
               />
             )}

@@ -278,3 +278,36 @@ export function smoothDailyAggregates(
   });
 }
 
+/**
+ * Transform a sum-style daily series (rain totals) into its running
+ * cumulative. Each output row's `mean` field holds the cumulative
+ * total through that day; `sum` mirrors the same value so consumers
+ * keying off either field render the same line.
+ *
+ * Outage days (count: 0) and null-sum rows carry the running total
+ * forward unchanged — they don't reset or break the cumulative line,
+ * which is the standard convention for cumulative precipitation
+ * charts (NOAA / AgriMet / climatology plots all treat missing days
+ * as "no contribution this day," not "data gap").
+ *
+ * The output preserves the input row count + timestamps, so the
+ * cumulative line shares an x-axis with the daily-total bars cleanly.
+ */
+export function toCumulative(rows: DailyAggregate[]): DailyAggregate[] {
+  let acc = 0;
+  return rows.map((row) => {
+    if (row.sum != null && Number.isFinite(row.sum)) acc += row.sum;
+    return {
+      ts: row.ts,
+      // Cumulative is monotonically non-decreasing — min/max aren't
+      // meaningful per row, so null them out and let consumers
+      // (DailyAggregateChart variant="cumulative") drive the header
+      // off the final value instead.
+      min: null,
+      max: null,
+      mean: acc,
+      sum: acc,
+      count: row.count,
+    };
+  });
+}
