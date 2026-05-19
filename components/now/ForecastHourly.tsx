@@ -18,6 +18,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { cToF, mpsToMph } from "@/lib/tempest/conversions";
+import { tempGradientStops } from "@/lib/tempest/chartGradient";
 import { formatClock } from "@/lib/tempest/format";
 import { useStationTz } from "@/lib/tempest/tz-context";
 import { formatInTimeZone } from "date-fns-tz";
@@ -39,11 +40,11 @@ import { LegendItem } from "./ForecastHourlyLegend";
  * Layout decisions:
  *   - **Feels-like line auto-shows** when the max delta between
  *     air temp and feels-like exceeds 1°F across the window. In
- *     mild dry climates the two track within ~1° most of the time
+ *     dry desert climates the two track within ~1° most of the year
  *     so the dashed companion would be invisible noise; in humid
- *     summers and wind-chill-driven winters the delta routinely
- *     hits 10-20°F and the line is the headline number people
- *     actually plan around.
+ *     East Coast / Gulf summers and wind-chill-driven northern
+ *     winters the delta routinely hits 10-20°F and the line is the
+ *     headline number people actually plan around.
  *   - **Wind layer renders whenever wind data is present** (no
  *     magnitude gate). Wind avg is a faint area at `fillOpacity 0.12`
  *     and the gust is a thin dashed line; the wind axis is visible
@@ -190,22 +191,12 @@ export function ForecastHourly({ hours, days }: Props) {
     })
     .map((d) => d.ts);
 
-  // Gradient stops for the temperature line, keyed to absolute °F so
-  // the same value always reads the same color. Stops outside the
-  // visible domain get clamped to the nearest edge.
-  const gradStops = [
-    { t: 110, c: "var(--temp-extreme)" },
-    { t: 95, c: "var(--temp-hot)" },
-    { t: 80, c: "var(--temp-warm)" },
-    { t: 65, c: "var(--temp-mild)" },
-    { t: 50, c: "var(--temp-cool)" },
-    { t: 38, c: "var(--temp-cold)" },
-  ]
-    .map(({ t, c }) => {
-      const ratio = 1 - (t - minT) / (maxT - minT);
-      return { offset: Math.max(0, Math.min(1, ratio)), color: c };
-    })
-    .sort((a, b) => a.offset - b.offset);
+  // Gradient stops for the temperature line. Shared with the History
+  // tab's Temp + Feels Like charts via `tempGradientStops` so the
+  // same °F value reads the same color across tabs (cross-tab
+  // consistency was the load-bearing argument against per-station
+  // adaptive thresholds — see `lib/tempest/chartGradient.ts`).
+  const gradStops = tempGradientStops(minT, maxT);
 
   const config = {
     tempF: { label: "Temperature", color: "var(--chart-1)" },

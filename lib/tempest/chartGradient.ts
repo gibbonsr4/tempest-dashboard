@@ -22,10 +22,21 @@ export interface GradientStop {
 
 /**
  * Temperature palette — keyed to absolute °F so the same value always
- * reads the same color regardless of which chart it's on. Stops are
- * declared HIGH → LOW so the gradient paints hot-on-top, cold-on-
- * bottom after the position-inversion in `tempGradientStops`. Matches
- * `--temp-cold` → `--temp-extreme` tokens in `app/globals.css`.
+ * reads the same color regardless of which chart, station, or
+ * deployment it's on. Phoenix's 70°F and Fairbanks's 70°F render
+ * identically.
+ *
+ * Stops span -20°F (polar) → 110°F (extreme) at ~15-20°F cadence so
+ * continental cold-climate stations (Minneapolis, interior Alaska)
+ * get meaningful gradation across the sub-freezing half of the
+ * chart, while warm-climate stations (Phoenix) never hit the cold-
+ * side stops — they clamp out of the visible domain via the
+ * `Math.max(0, Math.min(1, ratio))` in `tempGradientStops`, so the
+ * chart looks identical to the pre-extension version.
+ *
+ * Stops are declared HIGH → LOW so the gradient paints hot-on-top,
+ * cold-on-bottom after the position-inversion. Matches `--temp-polar`
+ * → `--temp-extreme` tokens in `app/globals.css` (both light + dark).
  */
 const TEMP_THRESHOLDS: ReadonlyArray<{ tempF: number; color: string }> = [
   { tempF: 110, color: "var(--temp-extreme)" },
@@ -34,6 +45,9 @@ const TEMP_THRESHOLDS: ReadonlyArray<{ tempF: number; color: string }> = [
   { tempF: 65, color: "var(--temp-mild)" },
   { tempF: 50, color: "var(--temp-cool)" },
   { tempF: 38, color: "var(--temp-cold)" },
+  { tempF: 20, color: "var(--temp-frigid)" },
+  { tempF: 0, color: "var(--temp-arctic)" },
+  { tempF: -20, color: "var(--temp-polar)" },
 ];
 
 /**

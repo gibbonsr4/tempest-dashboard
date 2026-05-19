@@ -159,7 +159,19 @@
   --wind-fresh: oklch(0.62 0.13 80);
   --wind-strong: oklch(0.55 0.20 35);
 
-  /* Temperature gradient (38°F cold → 110°F extreme) */
+  /* Temperature gradient — earth-bound stations span ~-40°F (polar
+   * Alaska) to ~120°F (desert Southwest). Stops at 15-20°F cadence
+   * across that domain so a continental winter station like
+   * Minneapolis gets meaningful gradation in the sub-freezing half
+   * of the chart, while a desert station like Phoenix never hits the
+   * polar/arctic/frigid stops (they clamp out of the visible domain
+   * via `tempGradientStops` in lib/tempest/chartGradient.ts). Hue
+   * progression: red 25° → orange 50° → amber 75° → teal 145° →
+   * slate-blue 220° → blue 245° → blue-violet 260° → violet 280° →
+   * pale lavender 300° (cold extreme reads as ice / frost). */
+  --temp-polar: oklch(0.70 0.10 300);
+  --temp-arctic: oklch(0.55 0.18 280);
+  --temp-frigid: oklch(0.55 0.18 260);
   --temp-cold: oklch(0.55 0.16 245);
   --temp-cool: oklch(0.55 0.13 220);
   --temp-mild: oklch(0.55 0.13 145);
@@ -271,7 +283,15 @@
   --wind-fresh: oklch(0.75 0.13 85);
   --wind-strong: oklch(0.66 0.20 35);
 
-  /* Temperature gradient — brighter variants. */
+  /* Temperature gradient — brighter variants for dark surfaces. The
+   * three cold-side stops (polar / arctic / frigid) extend the
+   * palette below freezing so continental winter stations get
+   * meaningful gradation; warm-climate stations clamp these out via
+   * `tempGradientStops` and see no visual change. Same hue
+   * progression as the light theme, lightness lifted ~0.10-0.15. */
+  --temp-polar: oklch(0.85 0.08 300);
+  --temp-arctic: oklch(0.68 0.18 280);
+  --temp-frigid: oklch(0.68 0.18 260);
   --temp-cold: oklch(0.65 0.16 245);
   --temp-cool: oklch(0.74 0.13 220);
   --temp-mild: oklch(0.74 0.13 145);
