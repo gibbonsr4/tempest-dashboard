@@ -117,22 +117,34 @@
      in HorizonBand, so no separate `--*-dim` tokens are needed. */
   --sun-bright: oklch(0.78 0.18 70);
   --sun-bright-stroke: oklch(0.62 0.16 60);
-  /* Arc colors tuned to clear WCAG 1.4.11 (non-text 3:1) against the
-   * HorizonBand's internal sky-night (L=0.42) + ground (L=0.78)
-   * backgrounds. The fix isn't just opacity — the original arc
-   * lightness sat too close to the sky-night L for any alpha to
-   * separate them, so the above-horizon arcs lift to L=0.82 (sun)
-   * and L=0.80 (moon) — bright marks against the dark blue sky.
-   * The below-horizon arcs go the opposite direction (darker than
-   * the light ground) at L=0.42 / L=0.38 with a softer alpha so
-   * they read as the visually-subordinate "where the body was/will
-   * be" continuation without disappearing. */
+  /* Arc colors tuned to clear WCAG 1.4.11 (non-text 3:1) against
+   * HorizonBand's sky + ground surfaces. The sun-arc stays at
+   * L=0.82 across all sky phases — orange (hue 60) is far enough
+   * from sky-blue (hue 222) that the chromatic signal carries
+   * even where the luminance ratio is borderline (e.g. vs
+   * sky-day at L=0.78). The moon-arc-above IS phase-aware (see
+   * `--moon-arc-on-*` below): desaturated blue at any single L
+   * blends into a matching-L sky phase — light moon-arc
+   * disappears on sky-day (L=0.78), dark moon-arc disappears on
+   * sky-night (L=0.42). The arcs flip with the ambient sky.
+   * Below-horizon arcs use a fixed darker tone (the ground color
+   * is static at L=0.78 across phases). */
   --sun-arc: oklch(0.82 0.15 60 / 0.95);
   --sun-arc-below: oklch(0.40 0.14 45 / 0.9);
   --moon-bright: oklch(0.92 0.03 90);
   --moon-dark: oklch(0.42 0.04 250);
   --moon-dark-subtitle: oklch(0.45 0.04 250);
-  --moon-arc: oklch(0.80 0.05 240 / 0.95);
+  /* Above-horizon moon arc — keyed to the four `--horizon-sky-*`
+   * phases. Day/civil skies are light → dark arc (L≈0.35); night/
+   * nautical skies are darker → light arc (L≈0.88). HorizonBand
+   * selects which to use based on the current sun altitude.
+   * `--moon-arc` stays as a sensible day-phase fallback for any
+   * callers reading it directly. */
+  --moon-arc-on-day: oklch(0.36 0.07 240 / 0.95);
+  --moon-arc-on-civil: oklch(0.34 0.07 240 / 0.95);
+  --moon-arc-on-nautical: oklch(0.88 0.04 240 / 0.95);
+  --moon-arc-on-night: oklch(0.88 0.04 240 / 0.95);
+  --moon-arc: var(--moon-arc-on-day);
   --moon-arc-below: oklch(0.38 0.04 250 / 0.85);
   --sunrise-marker: oklch(0.62 0.15 60);
   --sunset-marker: oklch(0.55 0.18 35);
@@ -267,16 +279,22 @@
   --moon-dark: oklch(0.40 0.02 250);
   --moon-dark-subtitle: oklch(0.36 0.02 250);
   /* Dark-theme arc colors tuned to clear WCAG 1.4.11 (non-text
-   * 3:1) against the dark-mode sky-night (L=0.24) and ground
-   * (L=0.32) backgrounds. Both surfaces are dark in dark theme, so
-   * BOTH above- and below-horizon arcs need to read LIGHT. The
-   * above-horizon arcs stay at L=0.85 (already cleared 3:1 with
-   * room to spare against the very-dark sky). The below-horizon
-   * arcs lift from the original 0.45-0.55 to L=0.72 — still visibly
-   * dimmer than the L=0.85 above-horizon path so the visual
-   * hierarchy holds, but now clears 3:1 against the dark ground
-   * rather than washing into it. */
-  --moon-arc: oklch(0.85 0.02 240 / 0.95);
+   * 3:1) against the dark-mode sky + ground surfaces. The sun-arc
+   * (warm hue) and the below-horizon arcs are static — the
+   * ground is fixed at L=0.32 and the orange-vs-blue chroma gap
+   * carries the sun-arc visually against every sky phase.
+   * Moon-arc-above flips with the sky just like in the light
+   * theme: dark-theme sky-day is L=0.63, too light for the L=0.85
+   * arc to clear 3:1, so day/civil go dark (L≈0.21) and nautical/
+   * night keep the original L=0.85 against the very-dark sky.
+   * Below-horizon arcs lift to L=0.72 — visibly dimmer than the
+   * above-horizon path so the hierarchy holds, but clears 3:1
+   * against the dark ground rather than washing into it. */
+  --moon-arc-on-day: oklch(0.22 0.06 240 / 0.95);
+  --moon-arc-on-civil: oklch(0.20 0.06 240 / 0.95);
+  --moon-arc-on-nautical: oklch(0.85 0.02 240 / 0.95);
+  --moon-arc-on-night: oklch(0.85 0.02 240 / 0.95);
+  --moon-arc: var(--moon-arc-on-night);
   --moon-arc-below: oklch(0.72 0.04 240 / 0.85);
   --sun-arc: oklch(0.85 0.14 70 / 0.95);
   --sun-arc-below: oklch(0.70 0.12 55 / 0.85);

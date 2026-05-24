@@ -302,6 +302,23 @@ export function HorizonBand({ latitude, longitude }: Props) {
         : sunNowAlt > -0.21
           ? "var(--horizon-sky-nautical)"
           : "var(--horizon-sky-night)";
+  // Above-horizon moon arc flips lightness with the ambient sky
+  // phase. A single static moon-arc color can't clear WCAG 1.4.11
+  // (non-text 3:1) against all four sky phases — a light desat-
+  // blue arc disappears against sky-day (L≈0.78), a dark one
+  // disappears against sky-night (L≈0.42). Keying the arc to the
+  // SAME altitude thresholds as `skyVar` keeps the two in sync so
+  // the arc is dark-on-light during day/civil and light-on-dark
+  // during nautical/night. The below-horizon arc still uses the
+  // static `--moon-arc-below` because the ground color is fixed.
+  const moonArcVar =
+    sunNowAlt > 0.105
+      ? "var(--moon-arc-on-day)"
+      : sunNowAlt > -0.105
+        ? "var(--moon-arc-on-civil)"
+        : sunNowAlt > -0.21
+          ? "var(--moon-arc-on-nautical)"
+          : "var(--moon-arc-on-night)";
   // Stars only show at the deepest sky phase (sun below -12°) so
   // they read as a quiet, restrained atmospheric flourish rather
   // than competing with the warm civil/nautical phases. The Stars
@@ -377,13 +394,17 @@ export function HorizonBand({ latitude, longitude }: Props) {
           );
         })}
 
-        {/* Moon arc — solid above horizon, dashed below. */}
+        {/* Moon arc — solid above horizon, dashed below. The above-
+            horizon stroke flips lightness with the sky phase (see
+            `moonArcVar` above) and crossfades over 1s to match the
+            sky `rect`'s fill transition. */}
         {moonSegments.above && (
           <path
             d={moonSegments.above}
             fill="none"
-            stroke="var(--moon-arc)"
+            stroke={moonArcVar}
             strokeWidth={1.4}
+            style={reduceMotion ? undefined : { transition: "stroke 1s ease-out" }}
           />
         )}
         {moonSegments.below && (
