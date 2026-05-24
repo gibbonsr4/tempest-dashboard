@@ -172,12 +172,24 @@ export function ForecastHourly({ hours, days }: Props) {
   const dataStart = data[0].ts;
   const dataEnd = data[data.length - 1].ts;
 
-  // NOW marker is gated on the current time falling inside the
-  // visible window. In normal use this is always true (the
-  // forecast starts at the current hour), but skips cleanly when
-  // the API returns a future-anchored forecast or a stale fetch
-  // outlives its 24h window.
-  const showNow = nowMs >= dataStart && nowMs <= dataEnd;
+  // NOW marker rendering. The Tempest forecast hourly rounds UP
+  // to the next top-of-hour, so `dataStart` is regularly 0-60 min
+  // in the future relative to `nowMs` (16:33 local → first entry
+  // is 17:00). A strict `nowMs >= dataStart` gate hides the marker
+  // exactly when the user most wants to see it — "what time is it
+  // relative to the start of this strip?". Allow a ±3h tolerance
+  // so the marker renders during that rounding gap and a couple
+  // hours into stale-fetch territory; beyond that the chart is too
+  // stale for "now" to belong on it. When `nowMs` is outside the
+  // strict [dataStart, dataEnd] domain (the rounding-gap case), we
+  // pin the marker to whichever edge is closest — the user reads
+  // "you're at the leftmost edge of the data" which is true within
+  // an hour.
+  const SHOW_NOW_TOLERANCE_MS = 3 * 60 * 60_000;
+  const showNow =
+    nowMs >= dataStart - SHOW_NOW_TOLERANCE_MS &&
+    nowMs <= dataEnd + SHOW_NOW_TOLERANCE_MS;
+  const clampedNowMs = Math.max(dataStart, Math.min(dataEnd, nowMs));
 
   // Collect every sunrise/sunset that lands inside the visible window.
   // Iterating across all daily entries (not just `today`) keeps the
@@ -591,7 +603,7 @@ export function ForecastHourly({ hours, days }: Props) {
               below the x-axis tick row, in its own visual lane. */}
           {showNow && (
             <ReferenceLine
-              x={nowMs}
+              x={clampedNowMs}
               yAxisId="temp"
               stroke="var(--primary)"
               strokeWidth={1.5}
