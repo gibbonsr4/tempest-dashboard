@@ -15,6 +15,10 @@ const eslintConfig = defineConfig([
     // OpenNext for Cloudflare emits a vendored bundle into .open-next/
     // — generated, not authored.
     ".open-next/**",
+    // Wrangler stages a deploy bundle in .wrangler/tmp/ during
+    // `cf:deploy`. Same situation: generated, not authored, re-emits
+    // on every deploy.
+    ".wrangler/**",
     // Vendor / one-off scripts that don't need the full Next ruleset.
     "scripts/**",
   ]),

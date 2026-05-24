@@ -117,13 +117,23 @@
      in HorizonBand, so no separate `--*-dim` tokens are needed. */
   --sun-bright: oklch(0.78 0.18 70);
   --sun-bright-stroke: oklch(0.62 0.16 60);
-  --sun-arc: oklch(0.65 0.16 50 / 0.8);
-  --sun-arc-below: oklch(0.55 0.10 50 / 0.4);
+  /* Arc colors tuned to clear WCAG 1.4.11 (non-text 3:1) against the
+   * HorizonBand's internal sky-night (L=0.42) + ground (L=0.78)
+   * backgrounds. The fix isn't just opacity — the original arc
+   * lightness sat too close to the sky-night L for any alpha to
+   * separate them, so the above-horizon arcs lift to L=0.82 (sun)
+   * and L=0.80 (moon) — bright marks against the dark blue sky.
+   * The below-horizon arcs go the opposite direction (darker than
+   * the light ground) at L=0.42 / L=0.38 with a softer alpha so
+   * they read as the visually-subordinate "where the body was/will
+   * be" continuation without disappearing. */
+  --sun-arc: oklch(0.82 0.15 60 / 0.95);
+  --sun-arc-below: oklch(0.40 0.14 45 / 0.9);
   --moon-bright: oklch(0.92 0.03 90);
   --moon-dark: oklch(0.42 0.04 250);
   --moon-dark-subtitle: oklch(0.45 0.04 250);
-  --moon-arc: oklch(0.45 0.05 250 / 0.55);
-  --moon-arc-below: oklch(0.55 0.04 250 / 0.35);
+  --moon-arc: oklch(0.80 0.05 240 / 0.95);
+  --moon-arc-below: oklch(0.38 0.04 250 / 0.85);
   --sunrise-marker: oklch(0.62 0.15 60);
   --sunset-marker: oklch(0.55 0.18 35);
 
@@ -256,10 +266,20 @@
      so the disc reads. */
   --moon-dark: oklch(0.40 0.02 250);
   --moon-dark-subtitle: oklch(0.36 0.02 250);
-  --moon-arc: oklch(0.85 0.02 240 / 0.55);
-  --moon-arc-below: oklch(0.55 0.02 240 / 0.45);
-  --sun-arc: oklch(0.85 0.14 70 / 0.7);
-  --sun-arc-below: oklch(0.45 0.10 60 / 0.4);
+  /* Dark-theme arc colors tuned to clear WCAG 1.4.11 (non-text
+   * 3:1) against the dark-mode sky-night (L=0.24) and ground
+   * (L=0.32) backgrounds. Both surfaces are dark in dark theme, so
+   * BOTH above- and below-horizon arcs need to read LIGHT. The
+   * above-horizon arcs stay at L=0.85 (already cleared 3:1 with
+   * room to spare against the very-dark sky). The below-horizon
+   * arcs lift from the original 0.45-0.55 to L=0.72 — still visibly
+   * dimmer than the L=0.85 above-horizon path so the visual
+   * hierarchy holds, but now clears 3:1 against the dark ground
+   * rather than washing into it. */
+  --moon-arc: oklch(0.85 0.02 240 / 0.95);
+  --moon-arc-below: oklch(0.72 0.04 240 / 0.85);
+  --sun-arc: oklch(0.85 0.14 70 / 0.95);
+  --sun-arc-below: oklch(0.70 0.12 55 / 0.85);
 
   /* Status palette — brighter variants for dark surfaces. */
   --status-good: oklch(0.74 0.13 145);
