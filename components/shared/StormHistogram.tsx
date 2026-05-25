@@ -142,10 +142,22 @@ export function StormHistogram({
   const handleMouseLeave = () => setActiveIdx(null);
 
   // Active bucket → tooltip data. Position the tooltip above the
-  // active bar's left edge, transformed to center on the bar. Header
-  // shows the bucket's full time range — values are sums over that
-  // range, so just a midpoint timestamp would leave the user
-  // guessing whether "0.16 in" fell in 5 min or 30.
+  // active bar. Header shows the bucket's full time range — values
+  // are sums over that range, so just a midpoint timestamp would
+  // leave the user guessing whether "0.16 in" fell in 5 min or 30.
+  //
+  // Positioning rule:
+  //   - First bucket → pin the tooltip's LEFT edge to the chart's
+  //     left edge. The bar is at the chart's left edge, so
+  //     centering would push half the tooltip past the card's
+  //     `overflow-hidden` clip.
+  //   - Last bucket → pin the tooltip's RIGHT edge to the chart's
+  //     right edge. (The case the user reported: lightning bar at
+  //     the right edge, tooltip text clipped.)
+  //   - Middle buckets → center on the bar via `-translate-x-1/2`
+  //     with a conservative 12% / 88% clamp so wider content (a
+  //     long "9:50 PM–10:00 PM" header on a narrow card) doesn't
+  //     overflow either side.
   let tooltip: React.ReactNode = null;
   if (activeIdx != null) {
     const v = bucketTotals[activeIdx];
@@ -160,16 +172,26 @@ export function StormHistogram({
       const startLabel = formatClock(bucketStart, tz);
       const endLabel =
         activeIdx === buckets - 1 ? "now" : formatClock(bucketEnd, tz);
-      // Clamp the tooltip's center so first/last buckets don't push
-      // it off the chart's left/right edges. ~7% of width covers the
-      // tooltip's half-width at typical sizes; the `min-w-[140px]`
-      // class keeps content readable even when clamped.
-      const rawFrac = (PADDING_X + activeIdx * barWidth + barWidth / 2) / VIEW_W;
-      const tooltipFrac = Math.min(0.93, Math.max(0.07, rawFrac));
+      const isFirstBucket = activeIdx === 0;
+      const isLastBucket = activeIdx === buckets - 1;
+      const rawFrac =
+        (PADDING_X + activeIdx * barWidth + barWidth / 2) / VIEW_W;
+      const tooltipFrac = Math.min(0.88, Math.max(0.12, rawFrac));
+      const positionStyle: React.CSSProperties = isFirstBucket
+        ? { left: 0 }
+        : isLastBucket
+          ? { right: 0 }
+          : { left: `${tooltipFrac * 100}%` };
+      const centerOnBar = !isFirstBucket && !isLastBucket;
       tooltip = (
         <div
-          className="pointer-events-none absolute bottom-full mb-2 z-10 grid min-w-[140px] -translate-x-1/2 gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl"
-          style={{ left: `${tooltipFrac * 100}%` }}
+          className={[
+            "pointer-events-none absolute bottom-full mb-2 z-10 grid min-w-[140px] gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl",
+            centerOnBar ? "-translate-x-1/2" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          style={positionStyle}
         >
           <div className="border-b border-border/40 pb-1 font-medium tabular">
             {startLabel}–{endLabel}
