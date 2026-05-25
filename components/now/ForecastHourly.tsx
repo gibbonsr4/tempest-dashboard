@@ -20,7 +20,6 @@ import {
 import { cToF, mpsToMph } from "@/lib/tempest/conversions";
 import { tempGradientStops } from "@/lib/tempest/chartGradient";
 import { formatClock } from "@/lib/tempest/format";
-import { useNow } from "@/lib/hooks/useNow";
 import { useStationTz } from "@/lib/tempest/tz-context";
 import { formatInTimeZone } from "date-fns-tz";
 import type {
@@ -62,12 +61,6 @@ import { LegendItem } from "./ForecastHourlyLegend";
  *     axis.
  *   - Sunrise / sunset are dashed vertical reference lines with a
  *     time label above the plot area.
- *   - A "NOW" reference line marks the current minute. Visually
- *     distinct from sunrise/sunset by stroke style (solid vs.
- *     dashed) and color (primary copper vs. sunrise/sunset gold-
- *     orange); the caret + "NOW" label hangs BELOW the x-axis
- *     tick row so it has its own lane regardless of where the
- *     line falls. Updates each minute via `useNow()`.
  */
 
 interface Props {
@@ -83,10 +76,6 @@ interface Props {
 
 export function ForecastHourly({ hours, days }: Props) {
   const tz = useStationTz();
-  // `useNow()` ticks every minute; the NOW reference line below
-  // recomputes its x position on each tick. Cheap — Recharts only
-  // re-renders the touched ReferenceLine, not the whole chart.
-  const nowMs = useNow();
   // Unique per-instance ids so two charts on one page don't collide
   // on the gradient / area `<defs>` references.
   const reactId = React.useId();
@@ -172,25 +161,6 @@ export function ForecastHourly({ hours, days }: Props) {
   const dataStart = data[0].ts;
   const dataEnd = data[data.length - 1].ts;
 
-  // NOW marker rendering. The Tempest forecast hourly rounds UP
-  // to the next top-of-hour, so `dataStart` is regularly 0-60 min
-  // in the future relative to `nowMs` (16:33 local → first entry
-  // is 17:00). A strict `nowMs >= dataStart` gate hides the marker
-  // exactly when the user most wants to see it — "what time is it
-  // relative to the start of this strip?". Allow a ±3h tolerance
-  // so the marker renders during that rounding gap and a couple
-  // hours into stale-fetch territory; beyond that the chart is too
-  // stale for "now" to belong on it. When `nowMs` is outside the
-  // strict [dataStart, dataEnd] domain (the rounding-gap case), we
-  // pin the marker to whichever edge is closest — the user reads
-  // "you're at the leftmost edge of the data" which is true within
-  // an hour.
-  const SHOW_NOW_TOLERANCE_MS = 3 * 60 * 60_000;
-  const showNow =
-    nowMs >= dataStart - SHOW_NOW_TOLERANCE_MS &&
-    nowMs <= dataEnd + SHOW_NOW_TOLERANCE_MS;
-  const clampedNowMs = Math.max(dataStart, Math.min(dataEnd, nowMs));
-
   // Collect every sunrise/sunset that lands inside the visible window.
   // Iterating across all daily entries (not just `today`) keeps the
   // markers correct when the 24-hour strip crosses midnight.
@@ -265,14 +235,7 @@ export function ForecastHourly({ hours, days }: Props) {
           // that the user noticed was almost entirely the wind YAxis
           // (`width: 44`); shrinking the axis below + dropping this
           // margin recovers another sliver of plot width.
-          // Bottom margin is 30 (was 4) to make room for the NOW
-          // marker — the x-axis tick row takes ~14px, and the
-          // caret + "NOW" label stacked below it adds ~13px (see
-          // `NowMarker` at the bottom of this file). The label
-          // sitting BELOW the ticks (instead of above the chart
-          // alongside sunrise/sunset) is what guarantees the
-          // collision-free lane the user asked for.
-          margin={{ top: 12, right: 4, bottom: 30, left: 0 }}
+          margin={{ top: 12, right: 4, bottom: 4, left: 0 }}
         >
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -596,23 +559,6 @@ export function ForecastHourly({ hours, days }: Props) {
             />
           ))}
 
-          {/* NOW indicator — solid primary stroke (vs. sunrise/sunset
-              `strokeDasharray="2 4"`) and primary copper color (vs.
-              gold/orange) so it's never confused with a dawn or dusk
-              marker. The caret + "NOW" label is drawn by NowMarker
-              below the x-axis tick row, in its own visual lane. */}
-          {showNow && (
-            <ReferenceLine
-              x={clampedNowMs}
-              yAxisId="temp"
-              stroke="var(--primary)"
-              strokeWidth={1.5}
-              strokeOpacity={0.85}
-              ifOverflow="visible"
-              label={<NowMarker />}
-            />
-          )}
-
           {/* Feels-like companion line. Same temp gradient stroke
               (so the color tells the story — "this is the heat
               you actually feel" tracks the real temperature spectrum)
@@ -686,56 +632,6 @@ export function ForecastHourly({ hours, days }: Props) {
         </div>
       )}
     </Card>
-  );
-}
-
-/**
- * Custom Recharts ReferenceLine label rendering the NOW marker:
- * a small upward-pointing caret + "NOW" text, stacked vertically
- * BELOW the x-axis tick row. Recharts hands us `viewBox` with the
- * plot area geometry (`x`, `y`, `width`, `height`) plus an `x` we
- * ignore (the ReferenceLine has already positioned the parent
- * group at the line's x-coordinate). We anchor everything off the
- * plot area's bottom edge (`viewBox.y + viewBox.height`) so the
- * marker stays glued to the foot of the line regardless of the
- * temperature y-domain.
- *
- * Vertical offsets:
- *   - x-axis tick labels (fontSize 10) occupy roughly +4 to +14
- *     below the plot bottom
- *   - +4 gap below the ticks
- *   - +18 → +23 caret (5px tall, 7px wide, tip toward the line)
- *   - +33 baseline of "NOW" text (fontSize 9, font-weight 700)
- *   - Total marker tail at ~+34, with chart `margin.bottom: 30`
- *     leaving a small breath at the SVG edge.
- */
-function NowMarker(props: {
-  viewBox?: { x?: number; y?: number; width?: number; height?: number };
-}) {
-  const { viewBox } = props;
-  if (!viewBox) return null;
-  const { x = 0, y = 0, height = 0 } = viewBox;
-  const plotBottom = y + height;
-  const triTopY = plotBottom + 18;
-  const triBottomY = plotBottom + 23;
-  const textY = plotBottom + 33;
-  return (
-    <g pointerEvents="none">
-      <polygon
-        points={`${x - 3.5},${triBottomY} ${x + 3.5},${triBottomY} ${x},${triTopY}`}
-        fill="var(--primary)"
-      />
-      <text
-        x={x}
-        y={textY}
-        fontSize={9}
-        fontWeight={700}
-        fill="var(--primary)"
-        textAnchor="middle"
-      >
-        NOW
-      </text>
-    </g>
   );
 }
 
