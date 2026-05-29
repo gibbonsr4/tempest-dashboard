@@ -20,7 +20,7 @@ export function TooltipRow({
   unit,
 }: {
   color: string;
-  swatchKind: "band" | "line" | "bar" | "dashed";
+  swatchKind: "band" | "line" | "bar" | "bar-ghost" | "dashed";
   label: string;
   value: string;
   unit: string;
@@ -40,6 +40,17 @@ export function TooltipRow({
       <span
         className="h-2.5 w-2 shrink-0 rounded-sm"
         style={{ backgroundColor: color }}
+      />
+    ) : swatchKind === "bar-ghost" ? (
+      // Mirrors the chart's compare-period overlay bar — same hue
+      // as the main bar but visibly muted (fillOpacity 0.25 +
+      // strokeOpacity 0.4 in `RainCompareOverlay`). One opacity on
+      // the swatch is close enough at this size; the alternative
+      // of color-mix + border adds CSS complexity that doesn't
+      // read at 8×10px.
+      <span
+        className="h-2.5 w-2 shrink-0 rounded-sm"
+        style={{ backgroundColor: color, opacity: 0.4 }}
       />
     ) : (
       <span

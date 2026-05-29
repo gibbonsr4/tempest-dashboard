@@ -247,6 +247,36 @@ export function DailyAggregateChart({
     [computeSummary, compare],
   );
 
+  // Y-axis domain. Recharts' "auto" only considers registered Bar/
+  // Line/Area `dataKey`s on the chart's data; the compare overlay
+  // for sum-style metrics (rain) draws raw SVG <rect>s via
+  // `RainCompareOverlay`, which the auto-domain can't see. The
+  // result: if last year's max (e.g. 0.86") towered over this
+  // year's (e.g. 0.16"), the y-axis would max out at ~0.16" and
+  // the compare ghost bars would render WAY above the visible
+  // plot area — the bug the user reported. Compute the domain
+  // explicitly when sum + compare so the axis covers both periods.
+  // A caller-supplied `yDomain` still wins (for charts that pin to
+  // a fixed scale, e.g. pressure).
+  const computedYDomain = React.useMemo<
+    [number | "auto", number | "auto"] | undefined
+  >(() => {
+    if (yDomain) return yDomain;
+    if (
+      variant === "sum" &&
+      compareSummary &&
+      summary &&
+      Number.isFinite(summary.max) &&
+      Number.isFinite(compareSummary.max)
+    ) {
+      // Pad 8% so the tallest bar doesn't hug the top edge —
+      // matches Recharts' auto-domain headroom heuristic.
+      const top = Math.max(summary.max, compareSummary.max) * 1.08;
+      return [0, top > 0 ? top : 0.1];
+    }
+    return undefined;
+  }, [yDomain, variant, summary, compareSummary]);
+
   // Gradient stops keyed to the chart's visible y-domain. Computed
   // from the summary (raw min/max) since smoothing only affects the
   // line shape, not the temperature range it spans. Includes a
@@ -434,7 +464,7 @@ export function DailyAggregateChart({
               tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
             />
             <YAxis
-              domain={yDomain ?? ["auto", "auto"]}
+              domain={computedYDomain ?? ["auto", "auto"]}
               tickLine={false}
               axisLine={false}
               width={32}
@@ -597,9 +627,16 @@ export function DailyAggregateChart({
                     {compare &&
                       variant === "sum" &&
                       row.compareSum != null && (
+                        // Use the metric's own color (not muted-
+                        // foreground) and the `bar-ghost` swatch so
+                        // the tooltip row visually matches the
+                        // faded compare bar drawn on the chart by
+                        // `RainCompareOverlay`. Previously this
+                        // row showed a gray dot for a blue ghost
+                        // bar — the disconnect the user reported.
                         <TooltipRow
-                          color="var(--muted-foreground)"
-                          swatchKind="bar"
+                          color={color}
+                          swatchKind="bar-ghost"
                           label="Previous total"
                           value={formatValue(row.compareSum)}
                           unit={unit}
@@ -766,6 +803,32 @@ export function DailyAggregateChart({
             )}
           </ComposedChart>
         </ChartContainer>
+      )}
+      {/* Compare-mode legend for the sum variant. Bars-vs-bars
+          (current solid + previous ghost) aren't visually as
+          self-explanatory as line-vs-dashed-line, so an explicit
+          two-swatch key is worth the row of vertical space. Sized
+          and centered to match the legend pattern used by
+          ForecastHourly on the Now tab. */}
+      {variant === "sum" && compare && points.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="h-2.5 w-2 shrink-0 rounded-sm"
+              style={{ backgroundColor: color }}
+            />
+            <span>This period</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="h-2.5 w-2 shrink-0 rounded-sm"
+              style={{ backgroundColor: color, opacity: 0.4 }}
+            />
+            <span>Previous period</span>
+          </span>
+        </div>
       )}
     </Card>
   );
