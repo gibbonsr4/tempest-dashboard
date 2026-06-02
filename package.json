@@ -53,9 +53,10 @@
     "wrangler": "^4.85.0"
   },
   "pnpm": {
-    "//": "ignore-scripts=true is set in .npmrc so the install never runs postinstall scripts and pnpm never warns about them. None of the scripts in our transitive deps (esbuild's binary install, msw's service-worker file, workerd, sharp, etc.) apply to this app's runtime. — overrides.fast-uri: ajv declares fast-uri@^3.0.1 but the resolved 3.1.0 has GHSA-q3j6-qgpj-74h6 (path traversal, patched in 3.1.1) + GHSA-v39h-62p7-jpjc (host confusion, patched in 3.1.2). Reached only via the shadcn CLI → MCP SDK → ajv (dev-tool path; nil runtime exposure), but the one-line override picks up the patch without disturbing anything else.",
+    "//": "ignore-scripts=true is set in .npmrc so the install never runs postinstall scripts and pnpm never warns about them. None of the scripts in our transitive deps (esbuild's binary install, msw's service-worker file, workerd, sharp, etc.) apply to this app's runtime. — overrides.fast-uri: ajv declares fast-uri@^3.0.1 but the resolved 3.1.0 has GHSA-q3j6-qgpj-74h6 (path traversal, patched in 3.1.1) + GHSA-v39h-62p7-jpjc (host confusion, patched in 3.1.2). Reached only via the shadcn CLI → MCP SDK → ajv (dev-tool path; nil runtime exposure), but the one-line override picks up the patch without disturbing anything else. — overrides.fast-xml-builder: resolved at 1.1.5 carries GHSA for attribute-quote bypass (patched in 1.1.7); reached only via @opennextjs/cloudflare → @opennextjs/aws → AWS SDK at deploy time, never bundled into the Worker. Pinning to ^1.2.0 (latest in the 1.x line) clears the audit and aligns with what fast-xml-parser@^5.8.0 already declares.",
     "overrides": {
-      "fast-uri": "^3.1.2"
+      "fast-uri": "^3.1.2",
+      "fast-xml-builder": "^1.2.0"
     }
   }
 }
