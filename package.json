@@ -53,6 +53,9 @@
     "wrangler": "^4.85.0"
   },
   "pnpm": {
-    "//": "ignore-scripts=true is set in .npmrc so the install never runs postinstall scripts and pnpm never warns about them. None of the scripts in our transitive deps (esbuild's binary install, msw's service-worker file, workerd, sharp, etc.) apply to this app's runtime."
+    "//": "ignore-scripts=true is set in .npmrc so the install never runs postinstall scripts and pnpm never warns about them. None of the scripts in our transitive deps (esbuild's binary install, msw's service-worker file, workerd, sharp, etc.) apply to this app's runtime. — overrides.fast-uri: ajv declares fast-uri@^3.0.1 but the resolved 3.1.0 has GHSA-q3j6-qgpj-74h6 (path traversal, patched in 3.1.1) + GHSA-v39h-62p7-jpjc (host confusion, patched in 3.1.2). Reached only via the shadcn CLI → MCP SDK → ajv (dev-tool path; nil runtime exposure), but the one-line override picks up the patch without disturbing anything else.",
+    "overrides": {
+      "fast-uri": "^3.1.2"
+    }
   }
 }
