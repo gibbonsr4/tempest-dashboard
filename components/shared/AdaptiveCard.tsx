@@ -89,7 +89,22 @@ export function AdaptiveCard({
                 ? { duration: 0 }
                 : { type: "spring", stiffness: 280, damping: 32 }
             }
-            className="overflow-hidden"
+            // Clip ONLY the bottom edge, via a static clip-path rather
+            // than `overflow: hidden`. The bottom clip is what the
+            // height animation needs — it stops content from spilling
+            // past the box as it expands/collapses. Leaving the top
+            // open lets the storm histogram's hover tooltip (drawn
+            // above the bars at the top of this region) escape upward
+            // and paint over the card header instead of being cropped.
+            //
+            // Why not toggle `overflow` on animation end: that leaves
+            // the tooltip clipped until the spring *completes*, and the
+            // Now tab's 1-second clock re-render can interrupt the
+            // spring mid-flight (observed on mobile) so it never fires.
+            // A static clip-path has no such dependency — it can't get
+            // stuck. The negative insets give the tooltip generous
+            // headroom on every side except the bottom.
+            style={{ clipPath: "inset(-1000px -1000px 0px -1000px)" }}
           >
             <div className="border-t px-4 py-3">{expanded}</div>
           </motion.div>
