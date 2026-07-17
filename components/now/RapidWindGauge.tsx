@@ -6,6 +6,18 @@ import { cardinal, mpsToMph } from "@/lib/tempest/conversions";
 import { Sparkline } from "@/components/shared/Sparkline";
 
 /**
+ * Round SVG coordinates derived from Math.cos/Math.sin to a stable
+ * sub-pixel precision. ECMAScript leaves the precision of transcendental
+ * functions implementation-defined, so the server (Node) and the client
+ * (browser) can compute the same tick endpoint to values differing in
+ * the last digit and serialize them to different attribute strings —
+ * which React reports as a hydration mismatch and re-renders. Collapsing
+ * to 2 decimals makes both sides emit the same short string; 0.01
+ * view-box units is far below visible precision on this 200-unit dial.
+ */
+const round = (n: number) => Math.round(n * 100) / 100;
+
+/**
  * Live wind gauge driven by the WebSocket rapid-wind feed. The pointer
  * rotates on `dirDeg` with a smooth Framer transition; the readout is
  * the most recent gust + cardinal label; the strip below is a 60-sample
@@ -69,10 +81,10 @@ export function RapidWindGauge({ size = 220 }: { size?: number }) {
           const angleRad = ((deg - 90) * Math.PI) / 180;
           const inner = radius - (isCardinal ? 10 : 6);
           const outer = radius;
-          const x1 = cx + inner * Math.cos(angleRad);
-          const y1 = cy + inner * Math.sin(angleRad);
-          const x2 = cx + outer * Math.cos(angleRad);
-          const y2 = cy + outer * Math.sin(angleRad);
+          const x1 = round(cx + inner * Math.cos(angleRad));
+          const y1 = round(cy + inner * Math.sin(angleRad));
+          const x2 = round(cx + outer * Math.cos(angleRad));
+          const y2 = round(cy + outer * Math.sin(angleRad));
           return (
             <line
               key={deg}
@@ -92,8 +104,8 @@ export function RapidWindGauge({ size = 220 }: { size?: number }) {
           const deg = i * 90;
           const angleRad = ((deg - 90) * Math.PI) / 180;
           const r = radius - 22;
-          const x = cx + r * Math.cos(angleRad);
-          const y = cy + r * Math.sin(angleRad) + 4; // +4 visual baseline nudge
+          const x = round(cx + r * Math.cos(angleRad));
+          const y = round(cy + r * Math.sin(angleRad) + 4); // +4 visual baseline nudge
           return (
             <text
               key={label}
