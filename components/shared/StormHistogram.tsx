@@ -146,18 +146,21 @@ export function StormHistogram({
   // are sums over that range, so just a midpoint timestamp would
   // leave the user guessing whether "0.16 in" fell in 5 min or 30.
   //
-  // Positioning rule:
+  // Horizontal placement keeps the tooltip within the card's width so
+  // it doesn't overhang the edge. (The expanded card clips only its
+  // bottom edge — see AdaptiveCard's clip-path, which leaves the top
+  // open so this tooltip can escape upward — so a tooltip pushed past
+  // the left/right edge now spills outside the card rather than being
+  // cropped, which still looks wrong.)
   //   - First bucket → pin the tooltip's LEFT edge to the chart's
-  //     left edge. The bar is at the chart's left edge, so
-  //     centering would push half the tooltip past the card's
-  //     `overflow-hidden` clip.
+  //     left edge. The bar hugs the left edge, so centering would
+  //     hang half the tooltip off the card.
   //   - Last bucket → pin the tooltip's RIGHT edge to the chart's
-  //     right edge. (The case the user reported: lightning bar at
-  //     the right edge, tooltip text clipped.)
+  //     right edge (mirror case, bar at the right edge).
   //   - Middle buckets → center on the bar via `-translate-x-1/2`
   //     with a conservative 12% / 88% clamp so wider content (a
   //     long "9:50 PM–10:00 PM" header on a narrow card) doesn't
-  //     overflow either side.
+  //     overhang either side.
   let tooltip: React.ReactNode = null;
   if (activeIdx != null) {
     const v = bucketTotals[activeIdx];
